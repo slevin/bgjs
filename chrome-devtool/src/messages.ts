@@ -41,7 +41,7 @@ export class GraphDetails implements Message {
 
 export type ActionSpec = {
     debugName: string|null;
-    updates: ResourceSpec[];
+    updates: ResourceShortSpec[];
 }
 
 export type SideEffectSpec = {
@@ -57,39 +57,47 @@ export type ResourceSpec = {
     graphId: number;
     extentId: number;
     resourceId: number;
-    type: string;
+    type: bg.ResourceType;
     debugName: string|null;
-    value: any;
+    value: number|string|boolean|null;
+    traceValue: number|string|boolean|null;
     updated: number|null;
     suppliedBy: BehaviorShortSpec;
-    demandedBy: BehaviorLinkSpec[];
+    demandedBy: BehaviorLinkSpec[] | null;
+}
+
+export type ResourceShortSpec = {
+    graphId: number;
+    extentId: number;
+    resourceId: number;
+    type: bg.ResourceType;
+    debugName: string|null;
 }
 
 export type DemandLinkSpec = {
-    linkType: string;
+    linkType: bg.LinkType;
     resource: ResourceSpec;
 }
 
 export type BehaviorLinkSpec = {
-    linkType: string;
+    linkType: bg.LinkType;
     behavior: BehaviorShortSpec;
 }
 
-export type BehaviorDetailSpec = {
+export type BehaviorSpec = {
     graphId: number;
     extentId: number;
     behaviorId: number;
-    description: string;
     supplies: ResourceSpec[];
     demands: DemandLinkSpec[];
-    lastRun: number;
+    lastRun: number | null;
 }
 
 export type BehaviorShortSpec = {
     graphId: number;
     extentId: number;
     behaviorId: number;
-    supplies: ResourceSpec[];
+    supplies: ResourceShortSpec[];
 }
 
 export class GraphDetailsResponse implements Message {
@@ -101,7 +109,7 @@ export class GraphDetailsResponse implements Message {
     currentSideEffect: SideEffectSpec | null = null;
     currentEvent: EventSpec | null = null;
     lastEvent: EventSpec = {sequence: 0, timestamp: new Date(0)};
-    currentBehavior: BehaviorDetailSpec | null = null;
+    currentBehavior: BehaviorSpec | null = null;
     behaviorQueue: BehaviorShortSpec[] = [];
 
     constructor(graphId: number) {

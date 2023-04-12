@@ -1,5 +1,5 @@
 import {DevtoolConnection} from "../../devtool";
-import {DevtoolClient, DevtoolClientConnection, DevtoolClientHook} from "../../devtool-client";
+import {DevtoolClient, DevtoolClientConnection, DevtoolClientHook, DefaultHook} from "../../devtool-client";
 import * as bg from "behavior-graph";
 import {Message} from "../../messages.js";
 
@@ -14,7 +14,7 @@ class TestHook implements DevtoolClientHook {
 
 export class TestConnection implements DevtoolConnection, DevtoolClientConnection {
     client: DevtoolClient;
-    clientHook: TestHook;
+    clientHook: DefaultHook;
     messagesFromTool: Message[] = [];
     queuedMessagesFromClient: Message[] = [];
     sentMessagesFromClient: Message[] = [];
@@ -22,7 +22,7 @@ export class TestConnection implements DevtoolConnection, DevtoolClientConnectio
     listener: ((arg0: Message) => void)|null = null;
 
     constructor() {
-        this.clientHook = new TestHook();
+        this.clientHook = new DefaultHook();
         this.client = new DevtoolClient(this);
         this.client.clientHook = this.clientHook;
     }

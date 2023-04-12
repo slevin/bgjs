@@ -7,6 +7,13 @@ import {Behavior} from "./behavior.js";
 import {Extent} from "./extent.js";
 import {GraphEvent, Graph, Transient} from "./graph.js";
 
+export enum ResourceType {
+    resource,
+    moment,
+    typedMoment,
+    state,
+}
+
 export enum LinkType {
     reactive,
     order,
@@ -50,6 +57,10 @@ export class Resource implements Demandable {
 
     get type(): LinkType {
         return LinkType.reactive;
+    }
+
+    get resourceType(): ResourceType {
+        return ResourceType.resource;
     }
 
     toString() {
@@ -139,6 +150,10 @@ export class Moment<T = undefined> extends Resource implements Transient {
         return this._happenedWhen;
     }
 
+    get resourceType(): ResourceType {
+        return ResourceType.moment;
+    }
+
     toString() {
         let name = "Moment";
         if (this.debugName != null) {
@@ -189,6 +204,10 @@ export class State<T> extends Resource implements Transient {
     constructor(extent: Extent, initialState: T, name?: string) {
         super(extent, name);
         this.currentState = { value: initialState, event: GraphEvent.initialEvent };
+    }
+
+    get resourceType(): ResourceType {
+        return ResourceType.state;
     }
 
     toString() {

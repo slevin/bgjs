@@ -12,7 +12,9 @@ export {
 export {
     Resource,
     Moment,
-    State
+    State,
+    LinkType,
+    ResourceType,
 } from "./resource.js"
 
 export {
