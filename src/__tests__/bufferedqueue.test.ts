@@ -119,3 +119,19 @@ test('peak heapifies buffer and shows top', () => {
     expect(q.length).toEqual(1);
 });
 
+test('snapshot is ordered', () => {
+    // |> Given items in queue
+    q.push(new Item(1));
+    q.push(new Item(3));
+    q.peek(); // forces heapify
+    q.push(new Item(2)); // puts something in buffer
+
+    // |> When we take a snapshot
+    let snapshot = q.orderedSnapshot();
+
+    // |> Then it is ordered
+    expect(snapshot[0].order).toEqual(1);
+    expect(snapshot[1].order).toEqual(2);
+    expect(snapshot[2].order).toEqual(3);
+});
+

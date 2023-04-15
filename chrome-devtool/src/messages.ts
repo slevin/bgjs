@@ -59,11 +59,11 @@ export type ResourceSpec = {
     resourceId: number;
     type: bg.ResourceType;
     debugName: string|null;
-    value: number|string|boolean|null;
-    traceValue: number|string|boolean|null;
+    value: any;
+    traceValue: any;
     updated: number|null;
-    suppliedBy: BehaviorShortSpec;
-    demandedBy: BehaviorLinkSpec[] | null;
+    suppliedBy: BehaviorShortSpec | null;
+    demandedBy: BehaviorLinkSpec[];
 }
 
 export type ResourceShortSpec = {
@@ -90,7 +90,7 @@ export type BehaviorSpec = {
     behaviorId: number;
     supplies: ResourceSpec[];
     demands: DemandLinkSpec[];
-    lastRun: number | null;
+    order: number;
 }
 
 export type BehaviorShortSpec = {
@@ -108,7 +108,7 @@ export class GraphDetailsResponse implements Message {
     sideEffectQueue: SideEffectSpec[] = [];
     currentSideEffect: SideEffectSpec | null = null;
     currentEvent: EventSpec | null = null;
-    lastEvent: EventSpec = {sequence: 0, timestamp: new Date(0)};
+    lastEvent: EventSpec | null = {sequence: 0, timestamp: new Date(0)};
     currentBehavior: BehaviorSpec | null = null;
     behaviorQueue: BehaviorShortSpec[] = [];
 

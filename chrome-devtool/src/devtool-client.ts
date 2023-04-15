@@ -1,5 +1,6 @@
 import * as bg from 'behavior-graph'
 import * as msg from './messages.js'
+import {BehaviorLinkSpec} from "./messages.js";
 
 export interface DevtoolClientHook {
     allGraphs(): Map<number, bg.Graph>
@@ -65,20 +66,21 @@ export class DevtoolClient {
                     // TODO respond with not found
                 } else {
                     let responseMessage = new msg.GraphDetailsResponse(graph._graphId);
-                    let eventLoopState = graph.eventLoopState;
-                    if (eventLoopState !== null) {
-                        let currentAction = {
-                            debugName: eventLoopState.action.debugName,
-                            updates: eventLoopState.actionUpdates.map((update) => {
-
-                            }
-
+                    responseMessage.actionQueue = graph.actions.map(action => {
+                        return {
+                            debugName: action.debugName ?? null,
+                            updates: []
                         }
-                    }
-                    let currentAction: msg.ActionSpec | null = null;
-                    if (graph.currentAction !== null) {
+                    });
+                    responseMessage.currentAction = actionSpecFromGraph(graph);
+                    responseMessage.currentEvent = eventSpecFromEvent(graph.currentEvent);
+                    responseMessage.lastEvent = eventSpecFromEvent(graph.lastEvent);
+                    responseMessage.currentBehavior = behaviorSpecFromBehavior(graph.currentBehavior);
+                    responseMessage.behaviorQueue = graph.activatedBehaviors.orderedSnapshot().map(behaviorShortSpecFromBehavior);
+                    let currentSideEffect = graph.eventLoopState?.currentSideEffect;
+                    responseMessage.currentSideEffect = currentSideEffect ? { debugName: currentSideEffect.debugName ?? null } : null;
+                    responseMessage.sideEffectQueue = graph.effects.map(sideEffect => { return { debugName: sideEffect.debugName ?? null } });
 
-                    }
                     this.connection.clientSend(responseMessage);
                     break;
                 }
@@ -94,13 +96,19 @@ function actionSpecFromGraph(graph: bg.Graph): msg.ActionSpec | null {
     } else {
         return {
             debugName: eventLoopState.action.debugName ?? null,
-            updates: eventLoopState.actionUpdates.map((update) => {
-                return {
-                    debugName: update.debugName,
-                    value: update.value
-                }
-            })
+            updates: eventLoopState.actionUpdates.map(resourceShortSpecFromResource),
         }
+    }
+}
+
+function eventSpecFromEvent(event: bg.GraphEvent | null): msg.EventSpec | null {
+    if (event != null) {
+        return {
+            sequence: event.sequence,
+            timestamp: event.timestamp
+        }
+    } else {
+        return null;
     }
 }
 
@@ -114,61 +122,125 @@ function resourceShortSpecFromResource(resource: bg.Resource): msg.ResourceShort
     }
 }
 
+function valueFromResource(resource: bg.Resource): any {
+    if (resource.resourceType === bg.ResourceType.moment) {
+        let value = (resource as bg.Moment<any>).value;
+        if (value === undefined) {
+            return value;
+        } else {
+            return  JSON.parse(JSON.stringify(value));
+        }
+    } else if (resource.resourceType === bg.ResourceType.state) {
+        return JSON.parse(JSON.stringify((resource as bg.State<any>).value));
+    } else {
+        return undefined;
+    }
+}
+
+function traceValueFromResource(resource: bg.Resource): any {
+    if (resource.resourceType === bg.ResourceType.state) {
+        return JSON.parse(JSON.stringify((resource as bg.State<any>).traceValue));
+    } else {
+        return undefined;
+    }
+}
+
+function updatedFromResource(resource: bg.Resource): number | null {
+    if (resource.resourceType === bg.ResourceType.resource) {
+        return null;
+    } else if (resource.resourceType === bg.ResourceType.moment) {
+        return (resource as bg.Moment<any>).event?.sequence ?? null;
+    } else if (resource.resourceType === bg.ResourceType.state) {
+        return (resource as bg.State<any>).event.sequence;
+    } else {
+        return null;
+    }
+}
+
 function resourceSpecFromResource(resource: bg.Resource): msg.ResourceSpec {
-    let f = function(thing): boolean {
-        return true;
-    }(resource);
     return {
         graphId: resource.graph._graphId,
         extentId: resource.extent._extentId,
         resourceId: resource._resourceId,
         type: resource.resourceType,
         debugName: resource.debugName,
-        value: function(res): string | null {
-            if (res.resourceType === bg.ResourceType.moment) {
-                return (res as! bg.Moment).value.toString();
-            } else if (res.resourceType === bg.ResourceType.state) {
-                return (res.as bg.State).value.toString();
-            } else {
-                return null;
-            }
-        }(resource),
-        traceValue: (() => {
-            if (resource.resourceType === bg.ResourceType.state) {
-                return (resource as bg.State).traceValue.toString();
-            } else {
-                return null;
-            }
-        )
-            (),
-                updated
-        :
-            (() => {
-                if (resource.resourceType === bg.ResourceType.resource) {
-                    return null;
-                } else if (resource.resourceType === bg.ResourceType.moment) {
-                    return (resource as bg.Moment).event.sequence;
-                } else if (resource.resourceType === = bg.ResourceType.state) {
-                    return (resource as bg.State).event.sequence;
-                } else {
-                    return null;
+        value: valueFromResource(resource),
+        traceValue: traceValueFromResource(resource),
+        updated: updatedFromResource(resource),
+        suppliedBy: resource.suppliedBy ? behaviorShortSpecFromBehavior(resource.suppliedBy) : null,
+        demandedBy: (() => {
+            let demandedBys: BehaviorLinkSpec[] = [];
+            for (let item of resource.subsequents) {
+                let behaviorShortSpec = behaviorShortSpecFromBehavior(item);
+                let linkType = bg.LinkType.reactive;
+                if (item.orderingDemands?.has(resource)) {
+                    linkType = bg.LinkType.order;
                 }
-            })(),
+                demandedBys.push({
+                    behavior: behaviorShortSpec,
+                    linkType: linkType
+                });
+            }
+            return demandedBys;
+        })()
+    }
+}
 
+function behaviorShortSpecFromBehavior(behavior: bg.Behavior): msg.BehaviorShortSpec {
+    return {
+        graphId: behavior.extent.graph._graphId,
+        extentId: behavior.extent._extentId,
+        behaviorId: behavior._behaviorId,
+        supplies: (() => {
+            let supplies: msg.ResourceShortSpec[] = [];
+            for (let item of behavior.supplies?.values() ?? []) {
+                supplies.push(resourceShortSpecFromResource(item));
+            }
+            return supplies;
+        })(),
+    }
+}
 
-        }
-        return {
-            debugName: resource.debugName ?? null,
-            value: resource.value
-        }
+function behaviorSpecFromBehavior(behavior: bg.Behavior | null): msg.BehaviorSpec | null {
+    if (behavior === null) {
+        return null;
     }
 
-    class ClientExtent extends bg.Extent {
+    return {
+        graphId: behavior.extent.graph._graphId,
+        extentId: behavior.extent._extentId,
+        behaviorId: behavior._behaviorId,
+        supplies: (() => {
+            let supplies: msg.ResourceSpec[] = [];
+            for (let item of behavior.supplies?.values() ?? []) {
+                supplies.push(resourceSpecFromResource(item));
+            }
+            return supplies;
+        })(),
+        demands: (() => {
+            let demands: msg.DemandLinkSpec[] = [];
+            for (let item of behavior.demands?.values() ?? []) {
+                let demandLinkSpec: msg.DemandLinkSpec = {
+                    resource: resourceSpecFromResource(item),
+                    linkType: bg.LinkType.reactive
+                };
+                if (behavior.orderingDemands?.has(item)) {
+                    demandLinkSpec.linkType = bg.LinkType.order;
+                }
+                demands.push(demandLinkSpec);
+            }
+            return demands;
+        })(),
+        order: behavior.order
+    }
+}
 
-        constructor(graph: bg.Graph) {
-            super(graph);
+class ClientExtent extends bg.Extent {
 
+    constructor(graph: bg.Graph) {
+        super(graph);
 
-        }
 
     }
+
+}

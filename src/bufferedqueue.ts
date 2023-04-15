@@ -82,6 +82,12 @@ export class BufferedPriorityQueue<T extends Orderable> {
         this.buffer.length = 0;
     }
 
+    public orderedSnapshot() : T[] {
+        let snapshot: T[] = [...this.queue, ...this.buffer];
+        snapshot.sort((a, b) => a.order - b.order);
+        return snapshot;
+    }
+
     private up(pos: number) {
         let b_up = this.queue[pos];
         while (pos > 0) {

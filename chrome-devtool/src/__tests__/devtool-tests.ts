@@ -116,6 +116,21 @@ describe("messages", () => {
                     .demands(this.startResource1, this.startResource2)
                     .runs(ext1 => {
                             ext1.interiorResource1.update(true);
+                            ext1.sideEffect(ext1 => {
+                                tool.requestGraphDetails(graphId);
+                                let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+                                expect(responseMessage.sideEffectQueue).toHaveLength(2); // two other side effect were created in other behaviors
+                                expect(responseMessage.sideEffectQueue[0].debugName).toEqual("side effect 2");
+                                expect(responseMessage.sideEffectQueue[1].debugName).toEqual("side effect 3");
+                                ext1.action(() => {
+                                    ext1.startResource3.update();
+                                    tool.requestGraphDetails(graphId);
+                                    let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+                                    expect(responseMessage.sideEffectQueue).toHaveLength(0); // no more side effects
+                                    expect(responseMessage.actionQueue).toHaveLength(0); // no more actions
+
+                                }, "update 2");
+                            }, "side effect 1");
 
                             tool.requestGraphDetails(graphId);
                             let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
@@ -130,9 +145,9 @@ describe("messages", () => {
                             expect(updatedResource.graphId).toEqual(graphId);
                             expect(updatedResource.extentId).toEqual(extentId);
                             expect(updatedResource.resourceId).toEqual(this.startResource1._resourceId);
-                            expect(updatedResource.type).toEqual(msg.ResourceType.Moment);
+                            expect(updatedResource.type).toEqual(bg.ResourceType.moment);
                             expect(updatedResource.debugName).toEqual("startResource1");
-                            expect(responseMessage.sideEffectQueue).toHaveLength(0);
+                            expect(responseMessage.sideEffectQueue).toHaveLength(1);
                             expect(responseMessage.currentSideEffect).toBeNull();
                             let currentEvent = responseMessage.currentEvent;
                             expect(currentEvent).not.toBeNull();
@@ -151,7 +166,7 @@ describe("messages", () => {
                             expect(supply?.graphId).toEqual(graphId);
                             expect(supply?.extentId).toEqual(extentId);
                             expect(supply?.resourceId).toEqual(this.interiorResource1._resourceId);
-                            expect(supply?.type).toEqual(msg.ResourceType.State);
+                            expect(supply?.type).toEqual(bg.ResourceType.state);
                             expect(supply?.debugName).toEqual("interiorResource1");
                             expect(supply?.value).toEqual(true);
                             expect(supply?.traceValue).toEqual(false);
@@ -160,20 +175,20 @@ describe("messages", () => {
                             expect(supply?.demandedBy).toHaveLength(2);
                             expect(currentBehavior?.demands).toHaveLength(2);
                             let demandLink = currentBehavior?.demands[0];
-                            expect(demandLink?.linkType).toEqual(msg.LinkType.Reactive);
+                            expect(demandLink?.linkType).toEqual(bg.LinkType.reactive);
                             let demand1 = demandLink!.resource;
                             expect(demand1?.graphId).toEqual(graphId);
                             expect(demand1?.extentId).toEqual(extentId);
                             expect(demand1?.resourceId).toEqual(this.startResource1._resourceId);
-                            expect(demand1?.type).toEqual(msg.ResourceType.Moment);
+                            expect(demand1?.type).toEqual(bg.ResourceType.moment);
                             expect(demand1?.debugName).toEqual("startResource1");
                             expect(demand1?.value).toEqual(1);
-                            expect(demand1?.traceValue).toEqual(null);
+                            expect(demand1?.traceValue).toEqual(undefined);
                             expect(demand1?.updated).toEqual(ext1.graph.currentEvent?.sequence);
                             expect(demand1?.suppliedBy).toEqual(null);
                             expect(demand1?.demandedBy).toHaveLength(1);
                             let demandedBy = demand1?.demandedBy!;
-                            expect(demandedBy[0].linkType).toEqual(msg.LinkType.Reactive);
+                            expect(demandedBy[0].linkType).toEqual(bg.LinkType.reactive);
                             let demandingBehavior = demandedBy[0].behavior;
                             expect(demandingBehavior.graphId).toEqual(graphId);
                             expect(demandingBehavior.extentId).toEqual(extentId);
@@ -183,23 +198,37 @@ describe("messages", () => {
                             expect(supplies[0].graphId).toEqual(graphId);
                             expect(supplies[0].extentId).toEqual(extentId);
                             expect(supplies[0].resourceId).toEqual(this.interiorResource1._resourceId);
-                            expect(supplies[0].type).toEqual(msg.ResourceType.Moment);
+                            expect(supplies[0].type).toEqual(bg.ResourceType.state);
                             expect(supplies[0].debugName).toEqual("interiorResource1");
                             expect(supplies[1].resourceId).toEqual(this.interiorResource2._resourceId);
                             expect(supplies[1].debugName).toEqual("interiorResource2");
-
+                            expect(currentBehavior?.order).toEqual(0);
                             expect(responseMessage.behaviorQueue).toHaveLength(2);
-                            // TODO test behavior queue is in the correct order (I could sort that of course)
                         }
                     );
 
                 this.behavior()
                     .demands(this.interiorResource1)
-                    .runs(ext1 => {});
+                    .runs(ext1 => {
+                        ext1.sideEffect(ext1 => {
+                            tool.requestGraphDetails(graphId);
+                            let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+                            expect(responseMessage.sideEffectQueue).toHaveLength(1); // two other side effect were created in other behaviors
+                            expect(responseMessage.actionQueue).toHaveLength(1);
+                            expect(responseMessage.actionQueue[0].debugName).toEqual("update 2");
+                        }, "side effect 2");
+                    });
 
                 this.behavior()
                     .demands(this.interiorResource1)
-                    .runs(ext1 => {});
+                    .runs(ext1 => {
+                        ext1.sideEffect(ext1 => {
+                            tool.requestGraphDetails(graphId);
+                            let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+                            expect(responseMessage.sideEffectQueue).toHaveLength(0); // no more side effects
+                            expect(responseMessage.actionQueue).toHaveLength(1); // same action
+                        }, "side effect 3");
+                    });
             }
         }
 
