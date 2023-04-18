@@ -3,6 +3,7 @@ import * as msg from "./messages.js";
 
 export interface DevtoolConnection {
     send(message: msg.Message): void;
+
     listen(listener: (message: msg.Message) => void): void;
 }
 
@@ -32,6 +33,11 @@ export class Devtool {
         this.extent.connection.value?.send(request);
     }
 
+    stepForward(id: number) {
+        let request = new msg.StepForward(id);
+        this.extent.connection.value?.send(request);
+    }
+
     handleMessage(message: msg.Message) {
         switch (message.type) {
             case "init-response":
@@ -40,17 +46,21 @@ export class Devtool {
             case "all-graphs":
                 this.extent.graphs.updateWithAction((message as msg.AllGraphs).graphs);
                 break;
-
+            case "graph-details-response":
+                this.extent.currentGraph.updateWithAction((message as msg.GraphDetailsResponse));
         }
     }
 
 }
 
 export class DevtoolExtent extends bg.Extent {
-    connection: bg.State<DevtoolConnection|null> = this.state(null);
+    connection: bg.State<DevtoolConnection | null> = this.state(null);
     connectionState: bg.State<ConnectionState> = this.state(ConnectionState.notConnected);
     initResponse: bg.Moment = this.moment();
-    graphs: bg.State<msg.GraphSpec[]|null> = this.state(null)
+    graphs: bg.State<msg.GraphSpec[] | null> = this.state([])
+    currentGraph: bg.State<msg.GraphDetailsResponse | null> = this.state(null);
+    selectGraph: bg.Moment<number> = this.moment();
+
 
     constructor(gr: bg.Graph) {
         super(gr);
@@ -77,5 +87,24 @@ export class DevtoolExtent extends bg.Extent {
 
             });
 
+        this.behavior()
+            .demands(this.selectGraph)
+            .runs(ext => {
+                ext.sideEffect(ext1 => {
+                    ext1.connection.value?.send(new msg.GraphDetails(ext1.selectGraph.value!));
+                });
+            });
+
+    }
+
+    refreshGraphs() {
+        this.connection.value?.send(new msg.ListGraphs);
+    }
+
+    stepForward() {
+        if (this.currentGraph.value !== null) {
+            let request = new msg.StepForward(this.currentGraph.value!.graphId);
+            this.connection.value?.send(request);
+        }
     }
 }

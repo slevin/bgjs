@@ -69,6 +69,8 @@ export class Graph {
     private justUpdatedCallbacks: Set<()=>void> = new Set();
     _graphId: number = newGraphId();
     _extentIdCounter: number = 1;
+    dbg_stepMode: boolean = false;
+    private stepFlag: boolean = false;
 
     constructor() {
         this.lastEvent = GraphEvent.initialEvent;
@@ -92,6 +94,11 @@ export class Graph {
 
     _newExtentId(): number {
         return this._extentIdCounter++;
+    }
+
+    dbg_step() {
+        this.stepFlag = true;
+        this.eventLoop();
     }
 
     action(block: () => void, debugName?: string) {
@@ -131,9 +138,23 @@ export class Graph {
 
     private eventLoop() {
 
+        if (this.dbg_stepMode && !this.stepFlag) {
+            return;
+        }
         while (true) {
-
+            if (this.dbg_stepMode) {
+                if (this.stepFlag) {
+                    this.stepFlag = false;
+                } else {
+                    break;
+                }
+            }
             try {
+
+                if (this.runBehaviorOfCurrentOrder()) {
+                    continue;
+                }
+
                 if (this.activatedBehaviors.length > 0 ||
                     this.untrackedBehaviors.length > 0 ||
                     this.modifiedDemandBehaviors.length > 0 ||
@@ -313,10 +334,27 @@ export class Graph {
         }
     }
 
+    private runBehaviorOfCurrentOrder(): boolean {
+        // check if there are any behaviors that match the previous ordering
+        // and run that. We do this as an optimization to run any behaviors
+        // of the same depth before potentially doing any resorting.
+        if (this.eventLoopState === null ||
+            this.eventLoopState.currentBehaviorOrder === null ||
+            this.activatedBehaviors.length === 0) {
+            return false;
+        }
+        let nextBehavior = this.activatedBehaviors.peek();
+        if (nextBehavior!.order === this.eventLoopState!.currentBehaviorOrder) {
+            this.runNextBehavior(this.currentEvent!.sequence);
+            return true;
+        } else {
+            this.eventLoopState!.currentBehaviorOrder = null;
+            return false;
+        }
+    }
+
     private runNextBehavior(sequence: number) {
-        // take top behavior off queue
         let topBehavior = this.activatedBehaviors.pop();
-        // if no behavior left we quit
         while (topBehavior !== undefined) {
             if (topBehavior!.removedWhen == sequence) {
                 // if this behavior has been removed already then try next one
@@ -324,16 +362,10 @@ export class Graph {
             } else {
                 // valid behavior, run it
                 this.currentBehavior = topBehavior!;
+                this.eventLoopState!.currentBehaviorOrder = topBehavior!.order;
                 topBehavior!.block(topBehavior!.extent);
                 this.currentBehavior = null;
-                // check if there is a next behavior and it's the same ordering as the first behavior
-                let nextBehavior = this.activatedBehaviors.peek();
-                if (nextBehavior !== undefined && nextBehavior!.order == topBehavior!.order) {
-                    // if so we will try running it also
-                    topBehavior = this.activatedBehaviors.pop();
-                } else {
-                    break;
-                }
+                break;
             }
         }
     }
@@ -808,6 +840,7 @@ export class EventLoopState {
     actionUpdates: Resource[];
     currentSideEffect: SideEffect | null = null;
     phase: EventLoopPhase;
+    currentBehaviorOrder: number | null = null;
 
     constructor(action: Action) {
         this.action = action;

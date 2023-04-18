@@ -58,6 +58,7 @@
     },
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
-    }
+    },
+    "testPathIgnorePatterns": ["lib", "react-behavior-graph", "chrome-devtool"]
   }
 }

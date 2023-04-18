@@ -18,7 +18,7 @@ export class ListGraphs implements Message {
 
 export type GraphSpec = {
     id: number;
-    debugName: string;
+    debugName: string | null;
 }
 
 export class AllGraphs implements Message {
@@ -111,6 +111,15 @@ export class GraphDetailsResponse implements Message {
     lastEvent: EventSpec | null = {sequence: 0, timestamp: new Date(0)};
     currentBehavior: BehaviorSpec | null = null;
     behaviorQueue: BehaviorShortSpec[] = [];
+
+    constructor(graphId: number) {
+        this.graphId = graphId;
+    }
+}
+
+export class StepForward implements Message {
+    type: string = "step-forward";
+    graphId: number;
 
     constructor(graphId: number) {
         this.graphId = graphId;

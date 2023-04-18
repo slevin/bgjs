@@ -1,4 +1,4 @@
-import * as bg from "lib/mjs";
+import * as bg from "behavior-graph";
 import { CounterExtent } from "./CounterExtent";
 import produce from "immer"
 

@@ -2712,5 +2712,63 @@ describe('Effects, Actions, Events', () => {
             });
         }).toThrow();
     });
+
+    test('step mode only runs steps in events when initiated', () => {
+        // |> Given a graph with step mode enabled
+        let s1: State<number> = ext.state(0);
+
+        ext.behavior()
+            .demands(s1)
+            .runs(extent => {
+
+            });
+
+        ext.behavior()
+            .demands(s1)
+            .runs(extent => {
+
+            });
+
+        ext.addToGraphWithAction();
+        g.dbg_stepMode = true;
+
+        // |> When I create an action
+        g.action(() => {
+            s1.update(1);
+        }, "action1");
+
+        // |> Then the action is not run
+        expect(g.currentEvent).toBeNull();
+        expect(s1.value).toBe(0);
+
+        // |> and when I step
+        g.dbg_step();
+
+        // |> Then the action is run but the behaviors are not
+        expect(g.activatedBehaviors.length).toBe(2);
+        expect(g.currentEvent).not.toBeNull();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then the first behavior is run
+        expect(g.activatedBehaviors.length).toBe(1);
+        expect(g.currentEvent).not.toBeNull();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then second behavior is run but event still not completed
+        expect(g.activatedBehaviors.length).toBe(0);
+        expect(g.currentEvent).not.toBeNull();
+        expect(s1.justUpdated).toBeTruthy();
+
+        // |> when I step again
+        g.dbg_step();
+
+        // |> Then the event is completed
+        expect(s1.justUpdated).toBeFalsy();
+        expect(g.currentEvent).toBeNull();
+    });
 });
 

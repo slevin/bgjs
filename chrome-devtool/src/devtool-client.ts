@@ -85,6 +85,11 @@ export class DevtoolClient {
                     break;
                 }
             }
+            case "step-forward": {
+                let stepForwardMessage = message as msg.StepForward;
+                let graph = this.clientHook.allGraphs().get(stepForwardMessage.graphId);
+                graph?.dbg_step();
+            }
         }
     }
 }

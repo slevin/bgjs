@@ -4,6 +4,7 @@ import * as bg from "behavior-graph";
 import {TestConnection} from "./utils/TestConnection";
 import {ConnectionState} from "../devtool.js";
 import * as msg from "../messages.js";
+import {Extent} from "behavior-graph";
 
 test("devtool initially has no connection", () => {
     let tool = new dt.Devtool();
@@ -105,8 +106,6 @@ describe("messages", () => {
             startResource3 = this.moment();
             interiorResource1: bg.State<boolean> = this.state(false);
             interiorResource2 = this.moment();
-            interiorResource3 = this.moment();
-
 
             constructor(graph: bg.Graph) {
                 super(graph);
@@ -239,28 +238,47 @@ describe("messages", () => {
         extentId = ext1._extentId;
         ext1.addToGraphWithAction("adding extent");
 
-        // test without action (should be no current action
-        // no current graph etc
-        // action without text gets name of updated resources?
-        // TODO could turn on this ability to catch messages before happening to speed things up
-        // most of the time I don't care right?
         connection.tst_flushClientMessages();
         connection.tst_flushClientMessages();
 
         // |> When I run an action I can see the graph details at various points
         ext1.startResource1.updateWithAction(1, "update 1");
-        /*
-        two resources
-        starts one
-        I'm in behavior that supplies a third and fourth resource
-        third activates two more behaviors
-        each one supplies a resource
-        and creates a side effect which activates the other resource
-        inside the first behavior I check
-        inside the first side effect I check
-        that should cover most things right?
-         */
+    });
 
+    it("can step forward", () => {
+        // |> Given we have a graph in step mode and created an action
+        let localGraph = new bg.Graph();
+        localGraph.dbg_stepMode = true;
+        let graphId = localGraph._graphId;
+        let ext1 = new Extent(localGraph);
+        let m1 = ext1.moment();
+        let s1 = ext1.state(0);
+        ext1.behavior()
+            .demands(m1)
+            .supplies(s1)
+            .runs(ext1 => {
+                s1.update(1);
+            });
+        ext1.addToGraphWithAction();
+
+        // connect
+        connection.tst_flushClientMessages();
+        connection.tst_flushClientMessages();
+
+        // create action shouldn't run it
+        m1.updateWithAction();
+        expect(s1.value).toEqual(0);
+        tool.requestGraphDetails(graphId);
+        let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+        expect(responseMessage.currentAction).toBeNull();
+
+        // |> When we step forward
+        tool.stepForward(graphId);
+
+        // |> Then there is a current action and event
+        tool.requestGraphDetails(graphId);
+        responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
+        expect(responseMessage.currentAction).not.toBeNull();
     });
 });
 
