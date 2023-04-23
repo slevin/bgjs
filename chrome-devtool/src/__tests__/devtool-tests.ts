@@ -248,7 +248,6 @@ describe("messages", () => {
     it("can step forward", () => {
         // |> Given we have a graph in step mode and created an action
         let localGraph = new bg.Graph();
-        localGraph.dbg_stepMode = true;
         let graphId = localGraph._graphId;
         let ext1 = new Extent(localGraph);
         let m1 = ext1.moment();
@@ -265,22 +264,22 @@ describe("messages", () => {
         connection.tst_flushClientMessages();
         connection.tst_flushClientMessages();
 
-        // create action shouldn't run it
+        // create action start and stop before running action block
+        localGraph.dbg_stepMode = true;
         m1.updateWithAction();
         expect(s1.value).toEqual(0);
         tool.requestGraphDetails(graphId);
         let responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
-        expect(responseMessage.currentAction).toBeNull();
+        expect(responseMessage.currentAction).not.toBeNull();
+        expect(m1.justUpdated).toBeFalsy();
 
         // |> When we step forward
         tool.stepForward(graphId);
 
-        // |> Then there is a current action and event
+        // |> Then there is a current action and event and 1is updated
         tool.requestGraphDetails(graphId);
         responseMessage = connection.queuedMessagesFromClient.at(-1) as msg.GraphDetailsResponse;
         expect(responseMessage.currentAction).not.toBeNull();
+        expect(m1.justUpdated).toBeTruthy();
     });
 });
-
-// try connecting multiple times does what?
-// init comes back from client and I'm not connecting?

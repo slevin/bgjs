@@ -105,6 +105,8 @@ export class DevtoolExtent extends bg.Extent {
         if (this.currentGraph.value !== null) {
             let request = new msg.StepForward(this.currentGraph.value!.graphId);
             this.connection.value?.send(request);
+            let graphRequest = new msg.GraphDetails(this.currentGraph.value!.graphId);
+            this.connection.value?.send(graphRequest);
         }
     }
 }

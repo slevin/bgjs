@@ -45,6 +45,7 @@ const DefaultDateProvider = {
 }
 
 let __graphIdCounter: number = 1;
+
 function newGraphId() {
     return __graphIdCounter++;
 }
@@ -66,7 +67,7 @@ export class Graph {
     extentsAdded: Extent[] = [];
     extentsRemoved: Extent[] = [];
     validateLifetimes: boolean = true;
-    private justUpdatedCallbacks: Set<()=>void> = new Set();
+    private justUpdatedCallbacks: Set<() => void> = new Set();
     _graphId: number = newGraphId();
     _extentIdCounter: number = 1;
     dbg_stepMode: boolean = false;
@@ -77,7 +78,7 @@ export class Graph {
 
         // @ts-ignore
 //        let allGraphs:Map<number, WeakRef<Graph>> = globalThis.__bgAllGraphs;
-        let allGraphs:Map<number, Graph> = globalThis.__bgAllGraphs;
+        let allGraphs: Map<number, Graph> = globalThis.__bgAllGraphs;
         if (allGraphs === undefined) {
             allGraphs = new Map();
             // @ts-ignore
@@ -85,9 +86,9 @@ export class Graph {
         }
         // @ts-ignore
 //        if (WeakRef === undefined) {
-            allGraphs.set(this._graphId, this);
+        allGraphs.set(this._graphId, this);
 //        } else {
-            // @ts-ignore
+        // @ts-ignore
 //            allGraphs.set(this._graphId, new WeakRef(this));
 //        }
     }
@@ -97,8 +98,14 @@ export class Graph {
     }
 
     dbg_step() {
-        this.stepFlag = true;
         this.eventLoop();
+    }
+
+    get currentAction(): Action | null {
+        if (this.eventLoopState !== null && this.eventLoopState.phase == _EventLoopPhase.action) {
+            return this.eventLoopState.action;
+        }
+        return null;
     }
 
     action(block: () => void, debugName?: string) {
@@ -106,12 +113,16 @@ export class Graph {
     }
 
     actionHelper(action: Action) {
-        if (this.eventLoopState != null && (this.eventLoopState.phase == EventLoopPhase.action || this.eventLoopState.phase == EventLoopPhase.updates)) {
+        if (this.eventLoopState != null && (!this.dbg_stepMode && (this.eventLoopState.phase == _EventLoopPhase.action || this.eventLoopState.phase == _EventLoopPhase.updates))) {
             let err: any = new Error("Action cannot be created directly inside another action or behavior. Consider wrapping it in a side effect block.");
             throw err;
         }
         this.actions.push(action);
-        this.eventLoop();
+        // if we are in step mode and in the middle of an event loop then creating an action conceptually has to be an async action
+        // because we can't force it to finish
+        if (!this.dbg_stepMode || (this.dbg_stepMode && this.currentEvent == null)) {
+            this.eventLoop();
+        }
     }
 
     async actionAsync(block: () => void, debugName?: string) {
@@ -121,7 +132,7 @@ export class Graph {
     async actionAsyncHelper(action: Action) {
         return new Promise((resolve, reject) => {
             try {
-                if (this.eventLoopState != null && (this.eventLoopState.phase == EventLoopPhase.action || this.eventLoopState.phase == EventLoopPhase.updates)) {
+                if (this.eventLoopState != null && (!this.dbg_stepMode && (this.eventLoopState.phase == _EventLoopPhase.action || this.eventLoopState.phase == _EventLoopPhase.updates))) {
                     let err: any = new Error("Action cannot be created directly inside another action or behavior. Consider wrapping it in a side effect block.");
                     throw err;
                 }
@@ -136,11 +147,9 @@ export class Graph {
         });
     }
 
-    private eventLoop() {
 
-        if (this.dbg_stepMode && !this.stepFlag) {
-            return;
-        }
+    private eventLoop() {
+        this.stepFlag = true;
         while (true) {
             if (this.dbg_stepMode) {
                 if (this.stepFlag) {
@@ -150,77 +159,133 @@ export class Graph {
                 }
             }
             try {
-
-                if (this.runBehaviorOfCurrentOrder()) {
-                    continue;
-                }
-
-                if (this.activatedBehaviors.length > 0 ||
-                    this.untrackedBehaviors.length > 0 ||
-                    this.modifiedDemandBehaviors.length > 0 ||
-                    this.modifiedSupplyBehaviors.length > 0 ||
-                    this.needsOrdering.length > 0) {
-
-                    this.eventLoopState!.phase = EventLoopPhase.updates;
-                    let sequence = this.currentEvent!.sequence;
-                    this.addUntrackedBehaviors();
-                    this.addUntrackedSupplies();
-                    this.addUntrackedDemands(sequence);
-                    this.orderBehaviors();
-                    this.runNextBehavior(sequence);
-
-                    continue;
-                }
-
-                if (this.validateLifetimes) {
-                    if (this.extentsAdded.length > 0) {
-                        this.validateAddedExtents();
-                        this.extentsAdded.length = 0;
+                if (this.eventLoopState === null) {
+                    let action = this.actions.shift();
+                    if (action) {
+                        let newEvent = new GraphEvent(this.lastEvent.sequence + 1, this.dateProvider.now());
+                        this.currentEvent = newEvent;
+                        this.eventLoopState = new EventLoopState(action);
+                        this.eventLoopState.phase = _EventLoopPhase.action;
+                        this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                        continue;
+                    } else {
+                        break; // exit event loop
                     }
-                    if (this.extentsRemoved.length > 0) {
-                        this.validateRemovedExtents();
-                        this.extentsRemoved.length = 0;
+                } else {
+                    if (this.eventLoopState.phase === _EventLoopPhase.action) {
+                        if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                            this.eventLoopState.action.block(this.eventLoopState.action.extent);
+                            this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                        } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
+                            this.eventLoopState.phase = _EventLoopPhase.updates;
+                            this.stepFlag = true; // next step should run through to next phase
+                        }
+                        continue;
+                    } else if (this.eventLoopState.phase === _EventLoopPhase.updates) {
+                        if (this.currentBehavior !== null) {
+                            if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                                this.currentBehavior.block(this.currentBehavior.extent);
+                                this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                            } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
+                                this.currentBehavior = null;
+                                this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                                this.stepFlag = true; // continue on to next behavior or phase
+                            }
+                            continue;
+                        } else if (this.eventLoopState.runningGraphUpdates) {
+                            if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                                let sequence = this.currentEvent!.sequence;
+                                this.addUntrackedBehaviors();
+                                this.addUntrackedSupplies();
+                                this.addUntrackedDemands(sequence);
+                                this.orderBehaviors();
+                                this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                                continue;
+                            } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
+                                this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                                this.eventLoopState.runningGraphUpdates = false;
+                                this.stepFlag = true; // continue on to next phase
+                                continue;
+                            }
+                        } else {
+                            if (this.runBehaviorOfCurrentOrder()) {
+                                continue;
+                            }
+
+                            if (this.untrackedBehaviors.length > 0 ||
+                                this.modifiedDemandBehaviors.length > 0 ||
+                                this.modifiedSupplyBehaviors.length > 0 ||
+                                this.needsOrdering.length > 0) {
+                                this.eventLoopState.runningGraphUpdates = true;
+                                this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                                continue;
+                            }
+
+                            if (this.activatedBehaviors.length > 0) {
+                                let sequence = this.currentEvent!.sequence;
+                                let foundBehavior = this.runNextBehavior(sequence);
+                                if (!foundBehavior) {
+                                    // continue on to next phase without stepping
+                                    this.stepFlag = true;
+                                } else {
+                                    this.eventLoopState.runnablePhase = _RunnablePhase.notStarted
+                                }
+                                continue;
+                            } else {
+                                if (this.validateLifetimes) {
+                                    if (this.extentsAdded.length > 0) {
+                                        this.validateAddedExtents();
+                                        this.extentsAdded.length = 0;
+                                    }
+                                    if (this.extentsRemoved.length > 0) {
+                                        this.validateRemovedExtents();
+                                        this.extentsRemoved.length = 0;
+                                    }
+                                }
+
+                                if (this.justUpdatedCallbacks.size > 0) {
+                                    this.turnSubscriptionsIntoSideEffects();
+                                }
+                                this.eventLoopState.phase = _EventLoopPhase.sideEffects;
+                                this.stepFlag = true; // current step should run through to next phase
+                                continue;
+                            }
+                        }
+
+                    } else if (this.eventLoopState.phase === _EventLoopPhase.sideEffects) {
+                        if (this.eventLoopState.currentSideEffect === null) {
+                            let effect = this.effects.shift();
+                            if (effect) {
+                                this.eventLoopState!.currentSideEffect = effect;
+                                this.eventLoopState!.runnablePhase = _RunnablePhase.notStarted;
+                            } else {
+                                this.eventLoopState!.phase = _EventLoopPhase.atEnd;
+                                this.eventLoopState!.runnablePhase = _RunnablePhase.notStarted;
+                                // don't skip through next phase here
+                            }
+                            continue;
+                        } else {
+                            if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                                this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                                this.eventLoopState.currentSideEffect.block(this.eventLoopState.currentSideEffect.extent);
+                            } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
+                                this.eventLoopState.currentSideEffect = null;
+                                this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                                this.stepFlag = true; // continue on to next side effect or phase
+                            }
+                            continue;
+                        }
+                    } else if (this.eventLoopState.phase === _EventLoopPhase.atEnd) {
+                        if (this.eventLoopState!.action.resolve != undefined) {
+                            this.eventLoopState!.action.resolve(undefined);
+                        }
+                        this.clearTransients();
+                        this.lastEvent = this.currentEvent!;
+                        this.currentEvent = null;
+                        this.eventLoopState = null;
+                        this.currentBehavior = null;
                     }
                 }
-
-                if (this.justUpdatedCallbacks.size > 0) {
-                    this.turnSubscriptionsIntoSideEffects();
-                }
-
-                let effect = this.effects.shift();
-                if (effect) {
-                    this.eventLoopState!.phase = EventLoopPhase.sideEffects;
-                    this.eventLoopState!.currentSideEffect = effect;
-                    effect.block(effect.extent);
-                    if (this.eventLoopState != null) {
-                        // side effect could create a synchronous action which would create a nested event loop
-                        // which would clear out any existing event loop states
-                        this.eventLoopState.currentSideEffect = null;
-                    }
-                    continue;
-                }
-
-                if (this.currentEvent) {
-                    if (this.eventLoopState!.action.resolve != undefined) {
-                        this.eventLoopState!.action.resolve(undefined);
-                    }
-                    this.clearTransients();
-                    this.lastEvent = this.currentEvent!;
-                    this.currentEvent = null;
-                    this.eventLoopState = null;
-                    this.currentBehavior = null;
-                }
-
-                let action = this.actions.shift();
-                if (action) {
-                    let newEvent = new GraphEvent(this.lastEvent.sequence + 1, this.dateProvider.now());
-                    this.currentEvent = newEvent;
-                    this.eventLoopState = new EventLoopState(action);
-                    this.eventLoopState.phase = EventLoopPhase.action;
-                    action.block(action.extent);
-                    continue;
-                }
-
             } catch (error) {
                 this.currentEvent = null;
                 this.eventLoopState = null;
@@ -237,8 +302,6 @@ export class Graph {
                 this.extentsRemoved.length = 0;
                 throw(error);
             }
-            // no more tasks so we can exit the event loop
-            break;
         }
     }
 
@@ -315,7 +378,7 @@ export class Graph {
 
     resourceTouched(resource: Resource) {
         if (this.currentEvent != null) {
-            if (this.eventLoopState != null && this.eventLoopState.phase == EventLoopPhase.action) {
+            if (this.eventLoopState != null && this.eventLoopState.phase == _EventLoopPhase.action) {
                 this.eventLoopState.actionUpdates.push(resource);
             }
             for (let subsequent of resource.subsequents) {
@@ -345,33 +408,33 @@ export class Graph {
         }
         let nextBehavior = this.activatedBehaviors.peek();
         if (nextBehavior!.order === this.eventLoopState!.currentBehaviorOrder) {
-            this.runNextBehavior(this.currentEvent!.sequence);
-            return true;
+            return this.runNextBehavior(this.currentEvent!.sequence);
         } else {
             this.eventLoopState!.currentBehaviorOrder = null;
             return false;
         }
     }
 
-    private runNextBehavior(sequence: number) {
+    private runNextBehavior(sequence: number): boolean {
         let topBehavior = this.activatedBehaviors.pop();
         while (topBehavior !== undefined) {
             if (topBehavior!.removedWhen == sequence) {
                 // if this behavior has been removed already then try next one
                 topBehavior = this.activatedBehaviors.pop();
             } else {
-                // valid behavior, run it
+                // valid behavior, set it up to run
                 this.currentBehavior = topBehavior!;
                 this.eventLoopState!.currentBehaviorOrder = topBehavior!.order;
-                topBehavior!.block(topBehavior!.extent);
-                this.currentBehavior = null;
-                break;
+                this.eventLoopState!.runnablePhase = _RunnablePhase.notStarted;
+                return true;
             }
         }
+        // no behavior found to run
+        return false;
     }
 
     subscribeToJustUpdated(resources: Resource[], callback: () => void): () => void {
-        let allUnsubscribes: (()=>void)[] = [];
+        let allUnsubscribes: (() => void)[] = [];
         for (let resource of resources) {
             let unsubscribe = resource.subscribeToJustUpdated(callback);
             allUnsubscribes.push(unsubscribe);
@@ -384,7 +447,7 @@ export class Graph {
         return bigUnsubscribe;
     }
 
-    _notifyJustUpdatedSubscribers(subscribers: Set<()=>void>) {
+    _notifyJustUpdatedSubscribers(subscribers: Set<() => void>) {
         subscribers.forEach(callback => {
             this.justUpdatedCallbacks.add(callback);
         });
@@ -405,7 +468,7 @@ export class Graph {
         if (this.currentEvent == null) {
             let err: any = new Error("Effects can only be added during an event.");
             throw err;
-        } else if (this.eventLoopState!.phase == EventLoopPhase.sideEffects) {
+        } else if (this.eventLoopState!.phase == _EventLoopPhase.sideEffects) {
             let err: any = new Error("Nested side effects don't make sense");
             throw err;
         } else {
@@ -828,23 +891,31 @@ export class GraphEvent {
     }
 }
 
-enum EventLoopPhase {
+export enum _EventLoopPhase {
     queued,
     action,
     updates,
-    sideEffects
+    sideEffects,
+    atEnd
+}
+
+export enum _RunnablePhase {
+    notStarted,
+    ran
 }
 
 export class EventLoopState {
     action: Action;
     actionUpdates: Resource[];
     currentSideEffect: SideEffect | null = null;
-    phase: EventLoopPhase;
+    phase: _EventLoopPhase;
+    runnablePhase: _RunnablePhase = _RunnablePhase.notStarted;
+    runningGraphUpdates: boolean = false;
     currentBehaviorOrder: number | null = null;
 
     constructor(action: Action) {
         this.action = action;
-        this.phase = EventLoopPhase.queued;
+        this.phase = _EventLoopPhase.queued;
         this.actionUpdates = [];
     }
 }

@@ -3,7 +3,7 @@
 //
 
 
-import {Behavior, Extent, Graph, GraphEvent, Moment, Resource, State} from '../index.js';
+import {Behavior, Extent, Graph, GraphEvent, Moment, Resource, State, _RunnablePhase, _EventLoopPhase} from '../index.js';
 
 let g: Graph;
 let setupExt: Extent;
@@ -2716,59 +2716,233 @@ describe('Effects, Actions, Events', () => {
     test('step mode only runs steps in events when initiated', () => {
         // |> Given a graph with step mode enabled
         let s1: State<number> = ext.state(0);
+        let m1: Moment = ext.moment();
+        let m2: Moment = ext.moment();
 
-        ext.behavior()
+        let sideEffect1Ran = false;
+        let sideEffect2Ran = false;
+
+        let b1 = ext.behavior()
+            .supplies(m1)
             .demands(s1)
             .runs(extent => {
-
+                m1.update();
+                extent.sideEffect(extent1 => {
+                    sideEffect1Ran = true;
+                }, "sideEffect1");
             });
 
-        ext.behavior()
+        let b2 = ext.behavior()
+            .supplies(m2)
             .demands(s1)
             .runs(extent => {
-
+                m2.update();
+                extent.sideEffect(extent1 => {
+                    sideEffect2Ran = true;
+                }, "sideEffect2");
             });
 
         ext.addToGraphWithAction();
         g.dbg_stepMode = true;
+
+        expect(g.currentEvent).toBeNull();
+        expect(g.currentAction).toBeNull();
 
         // |> When I create an action
         g.action(() => {
             s1.update(1);
         }, "action1");
 
-        // |> Then the action is not run
-        expect(g.currentEvent).toBeNull();
+        // |> Then that first action is set up but not run
+        expect(g.currentAction).not.toBeNull();
         expect(s1.value).toBe(0);
 
         // |> and when I step
         g.dbg_step();
 
-        // |> Then the action is run but the behaviors are not
+        // |> Then the action is run but not cleared
+        expect(g.currentAction).not.toBeNull();
+        expect(s1.value).toBe(1);
         expect(g.activatedBehaviors.length).toBe(2);
-        expect(g.currentEvent).not.toBeNull();
 
         // |> And when I step again
         g.dbg_step();
 
-        // |> Then the first behavior is run
+        // |> Then the action is cleared and the first behavior is set up to run
+        expect(g.currentAction).toBeNull();
         expect(g.activatedBehaviors.length).toBe(1);
-        expect(g.currentEvent).not.toBeNull();
+        expect(g.currentBehavior).toBe(b1);
+        expect(m1.justUpdated).toBeFalsy();
 
         // |> And when I step again
         g.dbg_step();
 
-        // |> Then second behavior is run but event still not completed
-        expect(g.activatedBehaviors.length).toBe(0);
-        expect(g.currentEvent).not.toBeNull();
-        expect(s1.justUpdated).toBeTruthy();
+        // |> Then behavior 1 is run but still current
+        expect(g.currentBehavior).toBe(b1);
+        expect(m1.justUpdated).toBeTruthy();
 
         // |> when I step again
         g.dbg_step();
 
-        // |> Then the event is completed
-        expect(s1.justUpdated).toBeFalsy();
+        // |> Then the second behavior is set up to run
+        expect(g.activatedBehaviors.length).toBe(0);
+        expect(g.currentBehavior).toBe(b2);
+        expect(m2.justUpdated).toBeFalsy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then behavior 2 is run but still current
+        expect(g.currentBehavior).toBe(b2);
+        expect(m2.justUpdated).toBeTruthy();
+        expect(g.effects).toHaveLength(2);
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then we have a set up side effect
+        expect(g.effects).toHaveLength(1);
+        expect(g.eventLoopState!.currentSideEffect).not.toBeNull();
+        expect(g.eventLoopState!.currentSideEffect!.debugName).toBe("sideEffect1");
+        expect(sideEffect1Ran).toBeFalsy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then the side effect is run but still current
+        expect(g.effects).toHaveLength(1);
+        expect(g.eventLoopState!.currentSideEffect).not.toBeNull();
+        expect(sideEffect1Ran).toBeTruthy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> then new side effect is set up
+        expect(g.effects).toHaveLength(0);
+        expect(g.eventLoopState!.currentSideEffect).not.toBeNull();
+        expect(g.eventLoopState!.currentSideEffect!.debugName).toBe("sideEffect2");
+        expect(sideEffect2Ran).toBeFalsy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then the side effect is run but still current
+        expect(g.eventLoopState!.currentSideEffect).not.toBeNull();
+        expect(sideEffect2Ran).toBeTruthy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then we are at event end but still active
+        expect(g.eventLoopState!.currentSideEffect).toBeNull();
+        expect(g.currentEvent).not.toBeNull();
+        expect(s1.justUpdated).toBeTruthy();
+
+        // |> And when I step again
+        g.dbg_step();
+
+        // |> Then event is over
         expect(g.currentEvent).toBeNull();
+        expect(s1.justUpdated).toBeFalsy();
+    });
+
+    test('can step through graph updates', () => {
+        // |> Given a graph with step mode enabled
+        // which will also add an extent to the graph
+        let m1: Moment = ext.moment();
+        ext.addToGraphWithAction();
+
+        let ext2 = new Extent(g);
+        ext.addChildLifetime(ext2);
+        let m2: Moment = ext2.moment();
+        ext2.behavior()
+            .supplies(m2)
+            .demands(m1)
+            .runs(extent => {
+                m2.update();
+            });
+        g.dbg_stepMode = true;
+
+        // |> When we step until extent is added
+        g.action(() => {
+            m1.update();
+            ext2.addToGraph();
+        });
+        g.dbg_step(); // step through action
+        g.dbg_step(); // step to about to run adding
+
+        // |> Then it stops before adding extent
+        expect(g.currentBehavior).toBeNull();
+        expect(g.activatedBehaviors.length).toBe(0);
+        expect(m1.subsequents.size).toBe(0);
+
+        // |> And when we step again
+        g.dbg_step();
+
+        // |> it stops afterwards
+        expect(g.currentBehavior).toBeNull();
+        expect(g.activatedBehaviors.length).toBe(1);
+        expect(m1.subsequents.size).toBe(1);
+        expect(g.eventLoopState!.phase).toBe(_EventLoopPhase.updates);
+        expect(g.eventLoopState!.runnablePhase).toBe(_RunnablePhase.ran);
+
+        // |> And when we step again
+        g.dbg_step();
+
+        // |> it stops before next behavior
+        expect(g.currentBehavior).not.toBeNull();
+        expect(m2.justUpdated).toBeFalsy();
+
+        // |> And when we step again
+        g.dbg_step();
+
+        // |> behavior is run
+        expect(g.currentBehavior).not.toBeNull();
+        expect(m2.justUpdated).toBeTruthy();
+    });
+
+    test('relaxed validators during stepping', () => {
+        // If we are stepping through the graph, we don't want to throw
+        // exceptions when accessing resources externally when stopped before a behavior
+        // or creating an action while in the update phase.
+        // This lets us interact with the graph from debugger while stepping
+
+        // |> Given a graph with step mode enabled
+        let m1 = ext.moment();
+        let m2 = ext.moment();
+        let m3 = ext.moment();
+        ext.behavior()
+            .demands(m2)
+            .runs(extent => {});
+
+        let b1 = ext.behavior()
+            .demands(m1)
+            .runs(extent => {
+                extent.sideEffect(() => {
+                    m3.updateWithAction()
+                });
+            });
+        ext.addToGraphWithAction();
+        g.dbg_stepMode = true;
+
+        // |> When we step until behavior is running
+        m1.updateWithAction();
+        g.dbg_step(); // step through action
+        g.dbg_step(); // step to about to run behavior
+        expect(g.currentBehavior).toBe(b1);
+        expect(g.eventLoopState!.runnablePhase).toBe(_RunnablePhase.notStarted);
+
+        // |> Then we can access non demanded resources externally
+        expect(m2.justUpdated).toBeFalsy();
+
+        // |> And when we create an action which should be run after the current behavior
+        m3.updateWithAction();
+
+        // |> Then the action is created but not run
+        // and doesn't move the stepper forward
+        expect(g.currentBehavior).toBe(b1);
+        expect(g.eventLoopState!.runnablePhase).toBe(_RunnablePhase.notStarted);
+
     });
 });
 

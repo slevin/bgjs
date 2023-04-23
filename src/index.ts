@@ -6,7 +6,9 @@
 export {
     DateProvider,
     Graph,
-    GraphEvent
+    GraphEvent,
+    _RunnablePhase,
+    _EventLoopPhase
 } from "./graph.js";
 
 export {

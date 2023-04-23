@@ -80,7 +80,7 @@ export class DevtoolClient {
                     let currentSideEffect = graph.eventLoopState?.currentSideEffect;
                     responseMessage.currentSideEffect = currentSideEffect ? { debugName: currentSideEffect.debugName ?? null } : null;
                     responseMessage.sideEffectQueue = graph.effects.map(sideEffect => { return { debugName: sideEffect.debugName ?? null } });
-
+                    responseMessage.runLoopState = runLoopStateFromGraph(graph);
                     this.connection.clientSend(responseMessage);
                     break;
                 }
@@ -128,25 +128,36 @@ function resourceShortSpecFromResource(resource: bg.Resource): msg.ResourceShort
 }
 
 function valueFromResource(resource: bg.Resource): any {
-    if (resource.resourceType === bg.ResourceType.moment) {
-        let value = (resource as bg.Moment<any>).value;
-        if (value === undefined) {
-            return value;
+    try {
+        if (resource.resourceType === bg.ResourceType.moment) {
+            let value = (resource as bg.Moment<any>).value;
+            if (value === undefined) {
+                return value;
+            } else {
+                //return parse(stringify(value));
+                return  JSON.parse(JSON.stringify(value));
+            }
+        } else if (resource.resourceType === bg.ResourceType.state) {
+            //return parse(stringify((resource as bg.State<any>).value));
+            return JSON.parse(JSON.stringify((resource as bg.State<any>).value));
         } else {
-            return  JSON.parse(JSON.stringify(value));
+            return undefined;
         }
-    } else if (resource.resourceType === bg.ResourceType.state) {
-        return JSON.parse(JSON.stringify((resource as bg.State<any>).value));
-    } else {
-        return undefined;
+    } catch (e) {
+        return "unserializable";
     }
 }
 
 function traceValueFromResource(resource: bg.Resource): any {
-    if (resource.resourceType === bg.ResourceType.state) {
-        return JSON.parse(JSON.stringify((resource as bg.State<any>).traceValue));
-    } else {
-        return undefined;
+    try {
+        if (resource.resourceType === bg.ResourceType.state) {
+            //return parse(stringify((resource as bg.State<any>).traceValue));
+            return JSON.parse(JSON.stringify((resource as bg.State<any>).traceValue));
+        } else {
+            return undefined;
+        }
+    } catch (e) {
+        return "unserializable";
     }
 }
 
@@ -204,6 +215,41 @@ function behaviorShortSpecFromBehavior(behavior: bg.Behavior): msg.BehaviorShort
             return supplies;
         })(),
     }
+}
+
+function runLoopStateFromGraph(graph: bg.Graph): msg.RunLoopState {
+    if (graph.eventLoopState === null) {
+        return msg.RunLoopState.notStarted;
+    } else if (graph.eventLoopState.phase === bg._EventLoopPhase.action) {
+        if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.notStarted) {
+            return msg.RunLoopState.beforeAction;
+        } else if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.ran) {
+            return msg.RunLoopState.afterAction;
+        }
+    } else if (graph.eventLoopState.phase === bg._EventLoopPhase.updates) {
+        if (graph.currentBehavior !== null) {
+            if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.notStarted) {
+                return msg.RunLoopState.beforeBehavior;
+            } else if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.ran) {
+                return msg.RunLoopState.afterBehavior;
+            }
+        } else if (graph.eventLoopState.runningGraphUpdates) {
+            if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.notStarted) {
+                return msg.RunLoopState.beforeGraphUpdate;
+            } else if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.ran) {
+                return msg.RunLoopState.afterGraphUpdate;
+            }
+        }
+    } else if (graph.eventLoopState.phase === bg._EventLoopPhase.sideEffects) {
+        if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.notStarted) {
+            return msg.RunLoopState.beforeSideEffect;
+        } else if (graph.eventLoopState.runnablePhase === bg._RunnablePhase.ran) {
+            return msg.RunLoopState.afterSideEffect;
+        }
+    } else if (graph.eventLoopState.phase === bg._EventLoopPhase.atEnd) {
+        return msg.RunLoopState.atEventEnd;
+    }
+    return msg.RunLoopState.unknown;
 }
 
 function behaviorSpecFromBehavior(behavior: bg.Behavior | null): msg.BehaviorSpec | null {

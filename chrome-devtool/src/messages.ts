@@ -40,12 +40,12 @@ export class GraphDetails implements Message {
 }
 
 export type ActionSpec = {
-    debugName: string|null;
+    debugName: string | null;
     updates: ResourceShortSpec[];
 }
 
 export type SideEffectSpec = {
-    debugName: string|null;
+    debugName: string | null;
 }
 
 export type EventSpec = {
@@ -58,10 +58,10 @@ export type ResourceSpec = {
     extentId: number;
     resourceId: number;
     type: bg.ResourceType;
-    debugName: string|null;
+    debugName: string | null;
     value: any;
     traceValue: any;
-    updated: number|null;
+    updated: number | null;
     suppliedBy: BehaviorShortSpec | null;
     demandedBy: BehaviorLinkSpec[];
 }
@@ -71,7 +71,7 @@ export type ResourceShortSpec = {
     extentId: number;
     resourceId: number;
     type: bg.ResourceType;
-    debugName: string|null;
+    debugName: string | null;
 }
 
 export type DemandLinkSpec = {
@@ -100,6 +100,20 @@ export type BehaviorShortSpec = {
     supplies: ResourceShortSpec[];
 }
 
+export enum RunLoopState {
+    notStarted = "notStarted",
+    beforeAction = "beforeAction",
+    afterAction = "afterAction",
+    beforeGraphUpdate = "beforeGraphUpdate",
+    afterGraphUpdate = "afterGraphUpdate",
+    beforeBehavior = "beforeBehavior",
+    afterBehavior = "afterBehavior",
+    beforeSideEffect = "beforeSideEffect",
+    afterSideEffect = "afterSideEffect",
+    atEventEnd = "atEventEnd",
+    unknown = "unknown"
+}
+
 export class GraphDetailsResponse implements Message {
     type: string = "graph-details-response";
     graphId: number;
@@ -111,6 +125,7 @@ export class GraphDetailsResponse implements Message {
     lastEvent: EventSpec | null = {sequence: 0, timestamp: new Date(0)};
     currentBehavior: BehaviorSpec | null = null;
     behaviorQueue: BehaviorShortSpec[] = [];
+    runLoopState: RunLoopState = RunLoopState.unknown;
 
     constructor(graphId: number) {
         this.graphId = graphId;

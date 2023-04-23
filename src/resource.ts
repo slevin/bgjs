@@ -99,7 +99,7 @@ export class Resource implements Demandable {
         let graph = this.graph;
         let currentBehavior = graph.currentBehavior;
 
-        if (currentBehavior != null && currentBehavior != this.suppliedBy && !currentBehavior.demands?.has(this)) {
+        if (!graph.dbg_stepMode && currentBehavior != null && currentBehavior != this.suppliedBy && !currentBehavior.demands?.has(this)) {
             let err: any = new Error("Cannot access the value or event of a resource inside a behavior unless it is supplied or demanded.");
             err.resource = this;
             err.currentBehavior = currentBehavior;
