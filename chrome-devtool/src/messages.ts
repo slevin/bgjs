@@ -140,3 +140,12 @@ export class StepForward implements Message {
         this.graphId = graphId;
     }
 }
+
+export class StoppedAtStep implements Message {
+    type: string = "stopped-at-step";
+    graphId: number;
+
+    constructor(graphId: number) {
+        this.graphId = graphId;
+    }
+}

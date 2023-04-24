@@ -3,7 +3,18 @@
 //
 
 
-import {Behavior, Extent, Graph, GraphEvent, Moment, Resource, State, _RunnablePhase, _EventLoopPhase} from '../index.js';
+import {
+    Behavior,
+    Extent,
+    Graph,
+    GraphEvent,
+    Moment,
+    Resource,
+    State,
+    _RunnablePhase,
+    _EventLoopPhase,
+    _BG_DebugHook, _BG_DebugClient
+} from '../index.js';
 
 let g: Graph;
 let setupExt: Extent;
@@ -2943,6 +2954,26 @@ describe('Effects, Actions, Events', () => {
         expect(g.currentBehavior).toBe(b1);
         expect(g.eventLoopState!.runnablePhase).toBe(_RunnablePhase.notStarted);
 
+    });
+
+    test('dont sent stop signal when not stepping', () => {
+        class TestClient implements _BG_DebugClient {
+            stopped: number | null = null;
+            stoppedAtStep(graph: Graph) {
+                this.stopped = graph._graphId;
+            }
+        }
+
+        let client = new TestClient();
+        // @ts-ignore
+        globalThis.__bg_debugHook.client = client;
+
+        let m1 = ext.moment();
+        ext.addToGraphWithAction();
+
+        ext.graph.dbg_stepMode = false;
+        m1.updateWithAction();
+        expect(client.stopped).toBeNull();
     });
 });
 

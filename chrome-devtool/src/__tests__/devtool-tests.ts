@@ -46,8 +46,6 @@ describe("messages", () => {
 
         testGraph1 = new bg.Graph();
         testGraph2 = new bg.Graph();
-        //connection.clientHook.graphs.set(testGraph1._graphId, testGraph1);
-        //connection.clientHook.graphs.set(testGraph2._graphId, testGraph2);
 
         tool.connect(connection);
     });
@@ -282,4 +280,51 @@ describe("messages", () => {
         expect(responseMessage.currentAction).not.toBeNull();
         expect(m1.justUpdated).toBeTruthy();
     });
+
+    test("get message from client when we stop after a single step", () => {
+        // |> Given we have a graph in step mode
+        let localGraph = new bg.Graph();
+        let graphId = localGraph._graphId;
+        let ext1 = new Extent(localGraph);
+        let m1 = ext1.moment();
+        let s1 = ext1.state(0);
+        ext1.behavior()
+            .demands(m1)
+            .supplies(s1)
+            .runs(ext1 => {
+                s1.update(1);
+            });
+        ext1.addToGraphWithAction();
+
+        // connect
+        connection.tst_flushClientMessages();
+        connection.tst_flushClientMessages();
+        expect(tool.extent.currentGraph.value).toBeNull();
+
+        // |> when we create an action
+        localGraph.dbg_stepMode = true;
+
+        let didStepForward: number | null = null;
+        tool.extent.didStepForward.subscribeToJustUpdated(() => {
+            didStepForward = tool.extent.didStepForward.value!;
+        });
+        m1.updateWithAction();
+        connection.tst_flushClientMessages();
+
+        // |> Then we get a message from client that we are stopped before running action
+        expect(didStepForward).toEqual(graphId);
+        // when we get a message that we stopped
+        // we automatically reload the latest graph details
+        expect(tool.extent.currentGraph.value).not.toBeNull();
+        expect(tool.extent.currentGraph.value?.currentAction).not.toBeNull();
+
+        // |> And when we create anohter action while in the current one
+        didStepForward = null
+        m1.updateWithAction();
+
+        // |> Then that doesn't cause us to step forward
+        expect(didStepForward).toBeNull();
+    });
+
+    // test for not sending whe stop mode is off
 });

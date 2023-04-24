@@ -50,6 +50,32 @@ function newGraphId() {
     return __graphIdCounter++;
 }
 
+export interface _BG_DebugClient {
+    stoppedAtStep(graph: Graph): void;
+}
+
+export class _BG_DebugHook {
+//  allGraphs:Map<number, WeakRef<Graph>> = globalThis.__bgAllGraphs;
+    allGraphs: Map<number, Graph> = new Map();
+    client: _BG_DebugClient | null = null;
+
+    addGraph(graph: Graph) {
+        this.allGraphs.set(graph._graphId, graph);
+//        if (WeakRef === undefined) {
+        //allGraphs.set(this._graphId, this);
+        // @ts-ignore
+//            allGraphs.set(this._graphId, new WeakRef(graph));
+    }
+
+    getGraph(graphId: number): Graph | undefined {
+        return this.allGraphs.get(graphId);
+    }
+
+    stoppedAtStep(graph: Graph) {
+        this.client?.stoppedAtStep(graph);
+    }
+}
+
 export class Graph {
     dateProvider: DateProvider = DefaultDateProvider;
     currentEvent: GraphEvent | null = null;
@@ -72,25 +98,21 @@ export class Graph {
     _extentIdCounter: number = 1;
     dbg_stepMode: boolean = false;
     private stepFlag: boolean = false;
+    private debugHook: _BG_DebugHook;
 
     constructor() {
         this.lastEvent = GraphEvent.initialEvent;
 
         // @ts-ignore
-//        let allGraphs:Map<number, WeakRef<Graph>> = globalThis.__bgAllGraphs;
-        let allGraphs: Map<number, Graph> = globalThis.__bgAllGraphs;
-        if (allGraphs === undefined) {
-            allGraphs = new Map();
+        let maybeHook: _BG_DebugHook | undefined = globalThis.__bg_debugHook
+        if (maybeHook === undefined) {
+            maybeHook = new _BG_DebugHook();
             // @ts-ignore
-            globalThis.__bgAllGraphs = allGraphs;
+            globalThis.__bg_debugHook = maybeHook;
         }
-        // @ts-ignore
-//        if (WeakRef === undefined) {
-        allGraphs.set(this._graphId, this);
-//        } else {
-        // @ts-ignore
-//            allGraphs.set(this._graphId, new WeakRef(this));
-//        }
+        let hook = maybeHook!;
+        this.debugHook = hook;
+        hook.addGraph(this);
     }
 
     _newExtentId(): number {
@@ -99,6 +121,11 @@ export class Graph {
 
     dbg_step() {
         this.eventLoop();
+    }
+
+    get _dbg_hook(): _BG_DebugHook {
+        // @ts-ignore
+        return globalThis.__bg_debugHook;
     }
 
     get currentAction(): Action | null {
@@ -155,6 +182,7 @@ export class Graph {
                 if (this.stepFlag) {
                     this.stepFlag = false;
                 } else {
+                    this.debugHook.stoppedAtStep(this);
                     break;
                 }
             }

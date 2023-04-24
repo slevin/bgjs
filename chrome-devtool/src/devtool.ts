@@ -48,6 +48,10 @@ export class Devtool {
                 break;
             case "graph-details-response":
                 this.extent.currentGraph.updateWithAction((message as msg.GraphDetailsResponse));
+                break;
+            case "stopped-at-step":
+                this.extent.didStepForward.updateWithAction((message as msg.StoppedAtStep).graphId);
+                break;
         }
     }
 
@@ -60,7 +64,7 @@ export class DevtoolExtent extends bg.Extent {
     graphs: bg.State<msg.GraphSpec[] | null> = this.state([])
     currentGraph: bg.State<msg.GraphDetailsResponse | null> = this.state(null);
     selectGraph: bg.Moment<number> = this.moment();
-
+    didStepForward: bg.Moment<number> = this.moment();
 
     constructor(gr: bg.Graph) {
         super(gr);
@@ -88,11 +92,19 @@ export class DevtoolExtent extends bg.Extent {
             });
 
         this.behavior()
-            .demands(this.selectGraph)
+            .demands(this.selectGraph, this.didStepForward)
             .runs(ext => {
-                ext.sideEffect(ext1 => {
-                    ext1.connection.value?.send(new msg.GraphDetails(ext1.selectGraph.value!));
-                });
+                let graphId: number | null = null;
+                if (this.selectGraph.justUpdated) {
+                    graphId = this.selectGraph.value!;
+                } else if (this.didStepForward.justUpdated) {
+                    graphId = this.didStepForward.value!;
+                }
+                if (graphId !== null) {
+                    ext.sideEffect(ext1 => {
+                        ext1.connection.value?.send(new msg.GraphDetails(graphId!));
+                    });
+                }
             });
 
     }
@@ -105,8 +117,6 @@ export class DevtoolExtent extends bg.Extent {
         if (this.currentGraph.value !== null) {
             let request = new msg.StepForward(this.currentGraph.value!.graphId);
             this.connection.value?.send(request);
-            let graphRequest = new msg.GraphDetails(this.currentGraph.value!.graphId);
-            this.connection.value?.send(graphRequest);
         }
     }
 }

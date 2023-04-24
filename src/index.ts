@@ -8,7 +8,9 @@ export {
     Graph,
     GraphEvent,
     _RunnablePhase,
-    _EventLoopPhase
+    _EventLoopPhase,
+    _BG_DebugHook,
+    _BG_DebugClient,
 } from "./graph.js";
 
 export {

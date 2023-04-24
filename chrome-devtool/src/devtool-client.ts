@@ -2,9 +2,6 @@ import * as bg from 'behavior-graph'
 import * as msg from './messages.js'
 import {BehaviorLinkSpec} from "./messages.js";
 
-export interface DevtoolClientHook {
-    allGraphs(): Map<number, bg.Graph>
-}
 
 export interface DevtoolClientConnection {
     clientSend(message: msg.Message): void;
@@ -12,21 +9,8 @@ export interface DevtoolClientConnection {
     clientListen(listener: (message: msg.Message) => void): void;
 }
 
-export class DefaultHook implements DevtoolClientHook {
-    allGraphs(): Map<number, bg.Graph> {
-        // @ts-ignore
-        if (globalThis.__bgAllGraphs !== undefined) {
-            // @ts-ignore
-            return globalThis.__bgAllGraphs as Map<number, bg.Graph>;
-        } else {
-            return new Map() as Map<number, bg.Graph>;
-        }
-    }
-}
+export class DevtoolClient implements bg._BG_DebugClient {
 
-export class DevtoolClient {
-
-    clientHook: DevtoolClientHook;
     connection: DevtoolClientConnection;
     graph: bg.Graph = new bg.Graph();
     extent: ClientExtent = new ClientExtent(this.graph);
@@ -34,11 +18,28 @@ export class DevtoolClient {
     constructor(connection: DevtoolClientConnection) {
         this.extent.addToGraphWithAction();
 
-        this.clientHook = new DefaultHook();
         this.connection = connection;
+        this.clientHook.client = this;
         connection.clientListen((message: msg.Message) => {
             this.handleMessage(message);
         });
+    }
+
+    get clientHook(): bg._BG_DebugHook {
+        // @ts-ignore
+        let maybeHook: _BG_DebugHook | undefined = globalThis.__bg_debugHook;
+        if (maybeHook === undefined) {
+            // @ts-ignore
+            globalThis.__bg_debugHook = new _BG_DebugHook();
+            // @ts-ignore
+            maybeHook = globalThis.__bg_debugHook;
+        }
+        return maybeHook!;
+    }
+
+    stoppedAtStep(graph: bg.Graph) {
+        let message = new msg.StoppedAtStep(graph._graphId);
+        this.connection.clientSend(message);
     }
 
     handleMessage(message: msg.Message) {
@@ -48,7 +49,7 @@ export class DevtoolClient {
                 break;
             case "list-graphs": {
                 let graphs: msg.GraphSpec[] = [];
-                this.clientHook.allGraphs().forEach((value, key) => {
+                this.clientHook.allGraphs.forEach((value, key) => {
                     graphs.push({
                         id: key,
                         debugName: ""
@@ -60,8 +61,8 @@ export class DevtoolClient {
             }
             case "graph-details": {
                 let detailsMessage = message as msg.GraphDetails;
-                let allGraphs = this.clientHook.allGraphs();
-                let graph = this.clientHook.allGraphs().get(detailsMessage.graphId);
+                let allGraphs = this.clientHook.allGraphs;
+                let graph = this.clientHook.allGraphs.get(detailsMessage.graphId);
                 if (graph === undefined) {
                     // TODO respond with not found
                 } else {
@@ -87,7 +88,7 @@ export class DevtoolClient {
             }
             case "step-forward": {
                 let stepForwardMessage = message as msg.StepForward;
-                let graph = this.clientHook.allGraphs().get(stepForwardMessage.graphId);
+                let graph = this.clientHook.allGraphs.get(stepForwardMessage.graphId);
                 graph?.dbg_step();
             }
         }
