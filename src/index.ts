@@ -11,6 +11,8 @@ export {
     _EventLoopPhase,
     _BG_DebugHook,
     _BG_DebugClient,
+    Action,
+    SideEffect,
 } from "./graph.js";
 
 export {

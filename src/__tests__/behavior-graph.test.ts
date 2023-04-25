@@ -13,8 +13,9 @@ import {
     State,
     _RunnablePhase,
     _EventLoopPhase,
-    _BG_DebugHook, _BG_DebugClient
+    _BG_DebugHook, _BG_DebugClient, Action, SideEffect
 } from '../index.js';
+import exp = require("constants");
 
 let g: Graph;
 let setupExt: Extent;
@@ -2723,6 +2724,99 @@ describe('Effects, Actions, Events', () => {
             });
         }).toThrow();
     });
+});
+
+describe('Debugging Interface', () => {
+    class TestClient implements _BG_DebugClient {
+        stopped: number | null = null;
+        tEventStarted: boolean = false;
+        tEventEnded: GraphEvent | null = null;
+        tActionQueued: Action | null = null;
+        tActionStarted: boolean = false;
+        tActionEnded: Action | null = null;
+        tBehaviorActivated: Behavior | null = null;
+        tBehaviorStarted: Behavior | null = null;
+        tBehaviorEnded: Behavior | null = null;
+        tResourceUpdated: Resource | null = null;
+        tExtentAdded: Extent | null = null;
+        tExtentRemoved: Extent | null = null;
+        tGraphUpdatesStarted: boolean = false;
+        tGraphUpdatesEnded: boolean = false;
+        tSideEffectQueued: SideEffect | null = null;
+        tSideEffectStarted: boolean = false;
+        tSideEffectEnded: SideEffect | null = null;
+
+        stoppedAtStep(graph: Graph) {
+            this.stopped = graph._graphId;
+        }
+
+        eventStarted(graph: Graph): void {
+            this.tEventStarted = true;
+        }
+
+        eventEnded(graph: Graph, event: GraphEvent): void {
+            this.tEventEnded = event;
+        }
+
+        actionQueued(graph: Graph, action: Action): void {
+            this.tActionQueued = action;
+        }
+
+        actionStarted(graph: Graph): void {
+            this.tActionStarted = true;
+        }
+        actionEnded(graph: Graph, action: Action) : void {
+            this.tActionEnded = action;
+        }
+
+        behaviorActivated(graph: Graph, behavior: Behavior): void {
+            this.tBehaviorActivated = behavior;
+        }
+
+        behaviorStarted(graph: Graph, behavior: Behavior): void {
+            this.tBehaviorStarted = behavior;
+        }
+
+        behaviorEnded(graph: Graph, behavior: Behavior): void {
+            this.tBehaviorEnded = behavior;
+        }
+
+        resourceUpdated(graph: Graph, resource: Resource): void {
+            this.tResourceUpdated = resource;
+        }
+
+        extentAdded(graph: Graph, extent: Extent): void {
+            this.tExtentAdded = extent;
+        }
+
+        extentRemoved(graph: Graph, extent: Extent) {
+            this.tExtentRemoved = extent;
+        }
+
+        graphUpdatesStarted(graph: Graph): void {
+            this.tGraphUpdatesStarted = true;
+        }
+        graphUpdatesEnded(graph: Graph): void {
+            this.tGraphUpdatesEnded = true;
+        }
+
+        sideEffectQueued(graph: Graph, sideEffect: SideEffect): void {
+            this.tSideEffectQueued = sideEffect;
+        }
+        sideEffectStarted(graph: Graph): void {
+            this.tSideEffectStarted = true;
+        }
+        sideEffectEnded(graph: Graph, sideEffect: SideEffect): void {
+            this.tSideEffectEnded = sideEffect;
+        }
+    }
+
+    let client: TestClient;
+    beforeEach(() => {
+        client = new TestClient();
+        // @ts-ignore
+        globalThis.__bg_debugHook.client = client;
+    });
 
     test('step mode only runs steps in events when initiated', () => {
         // |> Given a graph with step mode enabled
@@ -2957,16 +3051,6 @@ describe('Effects, Actions, Events', () => {
     });
 
     test('dont sent stop signal when not stepping', () => {
-        class TestClient implements _BG_DebugClient {
-            stopped: number | null = null;
-            stoppedAtStep(graph: Graph) {
-                this.stopped = graph._graphId;
-            }
-        }
-
-        let client = new TestClient();
-        // @ts-ignore
-        globalThis.__bg_debugHook.client = client;
 
         let m1 = ext.moment();
         ext.addToGraphWithAction();
@@ -2974,6 +3058,92 @@ describe('Effects, Actions, Events', () => {
         ext.graph.dbg_stepMode = false;
         m1.updateWithAction();
         expect(client.stopped).toBeNull();
+    });
+
+    test('loging enabled sends log messages', () => {
+        let m1 = ext.moment();
+
+        let ext2 = new Extent(g);
+        ext.addChildLifetime(ext2);
+        let s1 = ext2.state(0);
+        let sideEffectRan = false;
+        let b1 = ext.behavior()
+            .demands(m1)
+            .runs(extent => {
+                ext2.addToGraph();
+            });
+        let b2 = ext2.behavior()
+            .demands(m1)
+            .supplies(s1)
+            .runs(extent => {
+                s1.update(1);
+                extent.sideEffect(extInner => {
+                    sideEffectRan = true;
+                }, "ext2 side effect");
+            });
+        ext.addToGraphWithAction();
+
+        g.dbg_stepMode = true;
+        g.dbg_logMode = true;
+
+        m1.updateWithAction();
+
+        // before action runs
+        expect(client.tEventStarted).toBeTruthy();
+        expect(client.tActionQueued).toBe(g.currentAction);
+        expect(client.tActionStarted).toBeFalsy();
+
+        g.dbg_step(); // after running action block
+
+        expect(client.tActionStarted).toBeTruthy();
+        expect(client.tResourceUpdated).toBe(m1);
+        expect(client.tBehaviorActivated).toBe(b1);
+        expect(client.tActionEnded).toBe(g.currentAction);
+
+        client.tResourceUpdated = null;
+        g.dbg_step(); // just before running behavior
+        g.dbg_step(); // after running behavior
+
+        expect(client.tBehaviorStarted).toBe(b1);
+        expect(client.tExtentAdded).toBe(ext2);
+        // addedToGraph is updated during the adding of the extent phase but
+        // the graph updates run in a later phase. This isn't intentional
+        // but maybe addedToGraph should be run then since behaviors are activated then?
+        expect(client.tResourceUpdated).toBe(ext2.addedToGraph);
+        expect(client.tBehaviorEnded).toBe(b1);
+
+        client.tBehaviorActivated = null;
+        g.dbg_step(); // just before running updates
+        g.dbg_step(); // just after running updates
+
+        expect(client.tGraphUpdatesStarted).toBeTruthy();
+        expect(client.tBehaviorActivated).toBe(b2); // b2 is activated during adding
+        expect(client.tGraphUpdatesEnded).toBeTruthy();
+
+        g.dbg_step(); // just before new behavior
+        g.dbg_step(); // just after new behavior
+
+        expect(client.tSideEffectQueued).toBe(g.effects[0]);
+
+        g.dbg_step(); // just before running side effect
+        g.dbg_step(); // just after running side effect
+
+        expect(client.tSideEffectStarted).toBeTruthy();
+        expect(client.tSideEffectEnded).toBe(g.eventLoopState!.currentSideEffect);
+
+        g.dbg_step(); // at end but before ending event
+        g.dbg_step(); // after ending event
+
+        expect(client.tEventEnded).toBeTruthy();
+
+        ext2.removeFromGraphWithAction();
+        expect(client.tExtentRemoved).toBeNull();
+
+        g.dbg_step(); // run through action
+        expect(client.tExtentRemoved).toBe(ext2); // although should it happen after updates happen?
+
+        // async action flag
+
     });
 });
 

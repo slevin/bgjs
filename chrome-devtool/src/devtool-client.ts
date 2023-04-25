@@ -1,6 +1,5 @@
 import * as bg from 'behavior-graph'
 import * as msg from './messages.js'
-import {BehaviorLinkSpec} from "./messages.js";
 
 
 export interface DevtoolClientConnection {
@@ -42,6 +41,123 @@ export class DevtoolClient implements bg._BG_DebugClient {
         this.connection.clientSend(message);
     }
 
+    eventStarted(graph: bg.Graph): void {
+        let event = eventSpecFromEvent(graph.currentEvent);
+        if (event !== null) {
+            let message = new msg.LogEventStarted(graph._graphId, event!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    eventEnded(graph: bg.Graph, event: bg.GraphEvent): void {
+        let localEvent = eventSpecFromEvent(event);
+        if (localEvent !== null) {
+            let message = new msg.LogEventEnded(graph._graphId, event!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    actionQueued(graph: bg.Graph, action: bg.Action): void {
+        let localAction = {
+            debugName: action.debugName ?? "",
+            updates: []
+        }
+        let message = new msg.LogActionQueued(graph._graphId, localAction);
+        this.connection.clientSend(message);
+    }
+
+    actionStarted(graph: bg.Graph): void {
+        let localAction = actionSpecFromGraph(graph);
+        if (localAction !== null) {
+            let message = new msg.LogActionStarted(graph._graphId, localAction!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    actionEnded(graph: bg.Graph, action: bg.Action): void {
+        let localAction = actionSpecFromGraph(graph);
+        if (localAction !== null) {
+            let message = new msg.LogActionEnded(graph._graphId, localAction!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    behaviorActivated(graph: bg.Graph, behavior: bg.Behavior): void {
+        let localBehavior = behaviorShortSpecFromBehavior(behavior);
+        if (localBehavior !== null) {
+            let message = new msg.LogBehaviorActivated(graph._graphId, localBehavior!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    behaviorStarted(graph: bg.Graph, behavior: bg.Behavior): void {
+        let localBehavior = behaviorShortSpecFromBehavior(behavior);
+        if (localBehavior !== null) {
+            let message = new msg.LogBehaviorStarted(graph._graphId, localBehavior!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    behaviorEnded(graph: bg.Graph, behavior: bg.Behavior): void {
+        let localBehavior = behaviorShortSpecFromBehavior(behavior);
+        if (localBehavior !== null) {
+            let message = new msg.LogBehaviorEnded(graph._graphId, localBehavior!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    resourceUpdated(graph: bg.Graph, resource: bg.Resource): void {
+        let localResource = resourceShortSpecFromResource(resource);
+        if (localResource !== null) {
+            let message = new msg.LogResourceUpdated(graph._graphId, localResource!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    extentAdded(graph: bg.Graph, extent: bg.Extent): void {
+        let localExtent = extentShortSpecFromExtent(extent);
+        if (localExtent !== null) {
+            let message = new msg.LogExtentAdded(graph._graphId, localExtent!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    extentRemoved(graph: bg.Graph, extent: bg.Extent): void {
+        let localExtent = extentShortSpecFromExtent(extent);
+        if (localExtent !== null) {
+            let message = new msg.LogExtentRemoved(graph._graphId, localExtent!);
+            this.connection.clientSend(message);
+        }
+    }
+
+    graphUpdatesStarted(graph: bg.Graph): void {
+        let message = new msg.LogGraphUpdatesStarted(graph._graphId);
+        this.connection.clientSend(message);
+    }
+
+    graphUpdatesEnded(graph: bg.Graph): void {
+        let message = new msg.LogGraphUpdatesEnded(graph._graphId);
+        this.connection.clientSend(message);
+    }
+
+    sideEffectQueued(graph: bg.Graph, sideEffect: bg.SideEffect): void {
+        let localSideEffect = { debugName: sideEffect.debugName ?? "" };
+        let message = new msg.LogSideEffectQueued(graph._graphId, localSideEffect);
+        this.connection.clientSend(message);
+    }
+
+    sideEffectStarted(graph: bg.Graph): void {
+        // TODO just pass in the side effect
+        let localSideEffect = { debugName: graph.eventLoopState!.currentSideEffect!.debugName ?? "" };
+        let message = new msg.LogSideEffectStarted(graph._graphId, localSideEffect);
+    }
+    
+    sideEffectEnded(graph: bg.Graph, sideEffect: bg.SideEffect): void {
+        let localSideEffect = { debugName: sideEffect.debugName ?? "" };
+        let message = new msg.LogSideEffectEnded(graph._graphId, localSideEffect);
+        this.connection.clientSend(message);
+    }
+
     handleMessage(message: msg.Message) {
         switch (message.type) {
             case "init":
@@ -49,7 +165,7 @@ export class DevtoolClient implements bg._BG_DebugClient {
                 break;
             case "list-graphs": {
                 let graphs: msg.GraphSpec[] = [];
-                this.clientHook.allGraphs.forEach((value, key) => {
+                this.clientHook.allGraphs.forEach((value: bg.Graph, key: number) => {
                     graphs.push({
                         id: key,
                         debugName: ""
@@ -67,7 +183,7 @@ export class DevtoolClient implements bg._BG_DebugClient {
                     // TODO respond with not found
                 } else {
                     let responseMessage = new msg.GraphDetailsResponse(graph._graphId);
-                    responseMessage.actionQueue = graph.actions.map(action => {
+                    responseMessage.actionQueue = graph.actions.map((action: bg.Action) => {
                         return {
                             debugName: action.debugName ?? null,
                             updates: []
@@ -80,7 +196,7 @@ export class DevtoolClient implements bg._BG_DebugClient {
                     responseMessage.behaviorQueue = graph.activatedBehaviors.orderedSnapshot().map(behaviorShortSpecFromBehavior);
                     let currentSideEffect = graph.eventLoopState?.currentSideEffect;
                     responseMessage.currentSideEffect = currentSideEffect ? { debugName: currentSideEffect.debugName ?? null } : null;
-                    responseMessage.sideEffectQueue = graph.effects.map(sideEffect => { return { debugName: sideEffect.debugName ?? null } });
+                    responseMessage.sideEffectQueue = graph.effects.map((sideEffect: bg.SideEffect) => { return { debugName: sideEffect.debugName ?? null } });
                     responseMessage.runLoopState = runLoopStateFromGraph(graph);
                     this.connection.clientSend(responseMessage);
                     break;
@@ -93,6 +209,7 @@ export class DevtoolClient implements bg._BG_DebugClient {
             }
         }
     }
+
 }
 
 function actionSpecFromGraph(graph: bg.Graph): msg.ActionSpec | null {
@@ -186,7 +303,7 @@ function resourceSpecFromResource(resource: bg.Resource): msg.ResourceSpec {
         updated: updatedFromResource(resource),
         suppliedBy: resource.suppliedBy ? behaviorShortSpecFromBehavior(resource.suppliedBy) : null,
         demandedBy: (() => {
-            let demandedBys: BehaviorLinkSpec[] = [];
+            let demandedBys: msg.BehaviorLinkSpec[] = [];
             for (let item of resource.subsequents) {
                 let behaviorShortSpec = behaviorShortSpecFromBehavior(item);
                 let linkType = bg.LinkType.reactive;
@@ -216,6 +333,15 @@ function behaviorShortSpecFromBehavior(behavior: bg.Behavior): msg.BehaviorShort
             return supplies;
         })(),
     }
+}
+
+function extentShortSpecFromExtent(extent: bg.Extent): msg.ExtentShortSpec {
+    return {
+        graphId: extent.graph._graphId,
+        extentId: extent._extentId,
+        debugName: extent.debugConstructorName ?? null,
+        instanceName: extent.debugName ?? null
+    };
 }
 
 function runLoopStateFromGraph(graph: bg.Graph): msg.RunLoopState {

@@ -4,6 +4,13 @@ import {DevtoolClient} from "./devtool-client";
 import {useBGState} from "../../react-behavior-graph";
 import * as msg from "./messages";
 import {ReactElement} from "react";
+import {Tabs, Tab} from "@blueprintjs/core";
+import {Column, Cell, Table2, JSONFormat2} from "@blueprintjs/table";
+
+import "@blueprintjs/core/lib/css/blueprint.css";
+import "@blueprintjs/icons/lib/css/blueprint-icons.css";
+import "@blueprintjs/table/lib/css/table.css";
+import "@blueprintjs/popover2/lib/css/blueprint-popover2.css";
 
 console.log("creating devtool objects");
 let connection = new LocalConnection();
@@ -39,6 +46,28 @@ export function GraphList({graphs, tool}: GraphListProps) {
             </ul>
         </div>
     );
+}
+
+type LogViewProps = {
+    graph: msg.GraphDetailsResponse;
+    tool: DevtoolExtent;
+}
+
+export function LogView({graph, tool}: LogViewProps) {
+    let log = useBGState(tool.logMessages);
+
+    let eventCellRenderer = (rowIndex: number) => {
+        return (<Cell>{log[rowIndex].type}</Cell>)
+    }
+    let detailsCellRenderer = (rowIndex: number) => {
+        return (<Cell><JSONFormat2 detectTruncation={true}>{log[rowIndex]}</JSONFormat2></Cell>)
+    }
+    return (
+        <Table2 numRows={log.length}>
+            <Column name="Event" cellRenderer={eventCellRenderer} />
+            <Column name="Details" cellRenderer={detailsCellRenderer} />
+        </Table2>
+    )
 }
 
 type GraphViewProps = {
@@ -127,7 +156,12 @@ export function InnerDevtool({tool}: InnerProps) {
     if (currentGraph === null) {
         content = <GraphList graphs={graphs ?? []} tool={tool}/>;
     } else {
-        content = <GraphView graph={currentGraph} tool={tool}/>;
+        let graphView = <GraphView graph={currentGraph} tool={tool}/>;
+        let logView = <LogView graph={currentGraph} tool={tool}/>;
+        content = <Tabs id="Graph Views">
+            <Tab id="gv" title="Graph View" panel={graphView}/>
+            <Tab id="lv" title="Log View" panel={logView}/>
+        </Tabs>
     }
     return (
         <div>

@@ -9,6 +9,7 @@ let g = new bg.Graph();
 let allCounters = new AllCountersExtent(g);
 allCounters.addToGraphWithAction();
 g.dbg_stepMode = true;
+g.dbg_logMode = true;
 const container = document.getElementById("app");
 const root = createRoot(container!)
 console.log("rendering root")

@@ -100,6 +100,13 @@ export type BehaviorShortSpec = {
     supplies: ResourceShortSpec[];
 }
 
+export type ExtentShortSpec = {
+    graphId: number;
+    extentId: number;
+    debugName: string | null;
+    instanceName: string | null;
+}
+
 export enum RunLoopState {
     notStarted = "notStarted",
     beforeAction = "beforeAction",
@@ -147,5 +154,177 @@ export class StoppedAtStep implements Message {
 
     constructor(graphId: number) {
         this.graphId = graphId;
+    }
+}
+
+export class LogEventStarted implements Message {
+    type: string = "log-event-started";
+    graphId: number;
+    event: EventSpec;
+
+    constructor(graphId: number, event: EventSpec) {
+        this.graphId = graphId;
+        this.event = event;
+    }
+}
+
+export class LogActionQueued implements Message {
+    type: string = "log-action-queued";
+    graphId: number;
+    action: ActionSpec;
+
+    constructor(graphId: number, action: ActionSpec) {
+        this.graphId = graphId;
+        this.action = action;
+    }
+}
+
+export class LogEventEnded implements Message {
+    type: string = "log-event-ended";
+    graphId: number;
+    event: EventSpec;
+
+    constructor(graphId: number, event: EventSpec) {
+        this.graphId = graphId;
+        this.event = event;
+    }
+}
+
+export class LogActionStarted implements Message {
+    type: string = "log-action-started";
+    graphId: number;
+    action: ActionSpec;
+
+    constructor(graphId: number, action: ActionSpec) {
+        this.graphId = graphId;
+        this.action = action;
+    }
+}
+
+export class LogActionEnded implements Message {
+    type: string = "log-action-ended";
+    graphId: number;
+    action: ActionSpec;
+
+    constructor(graphId: number, action: ActionSpec) {
+        this.graphId = graphId;
+        this.action = action;
+    }
+}
+
+export class LogBehaviorActivated implements Message {
+    type: string = "log-behavior-activated";
+    graphId: number;
+    behavior: BehaviorShortSpec;
+
+    constructor(graphId: number, behavior: BehaviorShortSpec) {
+        this.graphId = graphId;
+        this.behavior = behavior;
+    }
+}
+
+export class LogBehaviorStarted implements Message {
+    type: string = "log-behavior-started";
+    graphId: number;
+    behavior: BehaviorShortSpec;
+
+    constructor(graphId: number, behavior: BehaviorShortSpec) {
+        this.graphId = graphId;
+        this.behavior = behavior;
+    }
+}
+
+export class LogBehaviorEnded implements Message {
+    type: string = "log-behavior-ended";
+    graphId: number;
+    behavior: BehaviorShortSpec;
+
+    constructor(graphId: number, behavior: BehaviorShortSpec) {
+        this.graphId = graphId;
+        this.behavior = behavior;
+    }
+}
+
+export class LogResourceUpdated implements Message {
+    type: string = "log-resource-updated";
+    graphId: number;
+    resource: ResourceShortSpec;
+
+    constructor(graphId: number, resource: ResourceShortSpec) {
+        this.graphId = graphId;
+        this.resource = resource;
+    }
+}
+
+export class LogExtentAdded implements Message {
+    type: string = "log-extent-added";
+    graphId: number;
+    extent: ExtentShortSpec;
+
+    constructor(graphId: number, extent: ExtentShortSpec) {
+        this.graphId = graphId;
+        this.extent = extent;
+    }
+}
+
+export class LogExtentRemoved implements Message {
+    type: string = "log-extent-removed";
+    graphId: number;
+    extent: ExtentShortSpec;
+
+    constructor(graphId: number, extent: ExtentShortSpec) {
+        this.graphId = graphId;
+        this.extent = extent;
+    }
+}
+
+export class LogGraphUpdatesStarted implements Message {
+    type: string = "log-graph-updates-started";
+    graphId: number;
+
+    constructor(graphId: number) {
+        this.graphId = graphId;
+    }
+}
+
+export class LogGraphUpdatesEnded implements Message {
+    type: string = "log-graph-updates-ended";
+    graphId: number;
+
+    constructor(graphId: number) {
+        this.graphId = graphId;
+    }
+}
+
+export class LogSideEffectQueued implements Message {
+    type: string = "log-side-effect-queued";
+    graphId: number;
+    sideEffect: SideEffectSpec;
+
+    constructor(graphId: number, sideEffect: SideEffectSpec) {
+        this.graphId = graphId;
+        this.sideEffect = sideEffect;
+    }
+}
+
+export class LogSideEffectStarted implements Message {
+    type: string = "log-side-effect-started";
+    graphId: number;
+    sideEffect: SideEffectSpec;
+
+    constructor(graphId: number, sideEffect: SideEffectSpec) {
+        this.graphId = graphId;
+        this.sideEffect = sideEffect;
+    }
+}
+
+export class LogSideEffectEnded implements Message {
+    type: string = "log-side-effect-ended";
+    graphId: number;
+    sideEffect: SideEffectSpec;
+
+    constructor(graphId: number, sideEffect: SideEffectSpec) {
+        this.graphId = graphId;
+        this.sideEffect = sideEffect;
     }
 }

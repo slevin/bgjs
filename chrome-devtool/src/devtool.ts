@@ -1,5 +1,6 @@
 import * as bg from "behavior-graph";
 import * as msg from "./messages.js";
+import produce from "immer";
 
 export interface DevtoolConnection {
     send(message: msg.Message): void;
@@ -52,6 +53,9 @@ export class Devtool {
             case "stopped-at-step":
                 this.extent.didStepForward.updateWithAction((message as msg.StoppedAtStep).graphId);
                 break;
+            default: {
+                this.extent.logMessageAdded.updateWithAction(message);
+            }
         }
     }
 
@@ -65,6 +69,8 @@ export class DevtoolExtent extends bg.Extent {
     currentGraph: bg.State<msg.GraphDetailsResponse | null> = this.state(null);
     selectGraph: bg.Moment<number> = this.moment();
     didStepForward: bg.Moment<number> = this.moment();
+    logMessages: bg.State<msg.Message[]> = this.state([]);
+    logMessageAdded: bg.Moment<msg.Message> = this.moment();
 
     constructor(gr: bg.Graph) {
         super(gr);
@@ -104,6 +110,18 @@ export class DevtoolExtent extends bg.Extent {
                     ext.sideEffect(ext1 => {
                         ext1.connection.value?.send(new msg.GraphDetails(graphId!));
                     });
+                }
+            });
+
+        this.behavior()
+            .demands(this.logMessageAdded)
+            .supplies(this.logMessages)
+            .runs(ext => {
+                if (this.logMessageAdded.justUpdated) {
+                    let newMessages = produce(this.logMessages.value, draft => {
+                        draft.push(this.logMessageAdded.value!);
+                    });
+                    this.logMessages.update(newMessages);
                 }
             });
 

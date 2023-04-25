@@ -326,5 +326,17 @@ describe("messages", () => {
         expect(didStepForward).toBeNull();
     });
 
+    test("log messages", () => {
+
+        // set up and do stuff
+
+        // I should get log messages
+
+        // and how does that show up in my ui?
+
+        // I could just have a log page that shows messages
+        // and depending on the log message it draws that? maybe up to a point and in theory I could filter all that stuff
+    });
+
     // test for not sending whe stop mode is off
 });

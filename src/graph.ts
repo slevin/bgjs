@@ -20,14 +20,14 @@ export enum OrderingState {
     Ordered // has a valid order
 }
 
-interface SideEffect {
+export interface SideEffect {
     block: (extent: Extent | null) => void;
     extent: Extent | null;
     behavior: Behavior | null;
     debugName?: string;
 }
 
-interface Action {
+export interface Action {
     block: (extent: Extent | null) => void;
     extent: Extent | null;
     resolve: ((value: any) => void) | null;
@@ -52,9 +52,32 @@ function newGraphId() {
 
 export interface _BG_DebugClient {
     stoppedAtStep(graph: Graph): void;
+
+    eventStarted(graph: Graph): void;
+    eventEnded(graph: Graph, event: GraphEvent): void;
+
+    actionQueued(graph: Graph, action: Action): void;
+    actionStarted(graph: Graph): void; // block of action code
+    actionEnded(graph: Graph, action: Action): void;
+
+    behaviorActivated(graph: Graph, behavior: Behavior): void;
+    behaviorStarted(graph: Graph, behavior: Behavior): void;
+    behaviorEnded(graph: Graph, behavior: Behavior): void;
+
+    resourceUpdated(graph: Graph, resource: Resource): void;
+
+    extentAdded(graph: Graph, extent: Extent): void;
+    extentRemoved(graph: Graph, extent: Extent): void;
+
+    graphUpdatesStarted(graph: Graph): void;
+    graphUpdatesEnded(graph: Graph): void;
+
+    sideEffectQueued(graph: Graph, sideEffect: SideEffect): void;
+    sideEffectStarted(graph: Graph): void;
+    sideEffectEnded(graph: Graph, sideEffect: SideEffect): void;
 }
 
-export class _BG_DebugHook {
+export class _BG_DebugHook implements _BG_DebugClient {
 //  allGraphs:Map<number, WeakRef<Graph>> = globalThis.__bgAllGraphs;
     allGraphs: Map<number, Graph> = new Map();
     client: _BG_DebugClient | null = null;
@@ -74,6 +97,69 @@ export class _BG_DebugHook {
     stoppedAtStep(graph: Graph) {
         this.client?.stoppedAtStep(graph);
     }
+
+    eventStarted(graph: Graph): void {
+        this.client?.eventStarted(graph);
+    }
+
+    eventEnded(graph: Graph, event: GraphEvent): void {
+        this.client?.eventEnded(graph, event);
+    }
+
+    actionQueued(graph: Graph, action: Action): void {
+        this.client?.actionQueued(graph, action);
+    }
+    actionStarted(graph: Graph): void {
+        this.client?.actionStarted(graph);
+    }
+
+    actionEnded(graph: Graph, action: Action): void {
+        this.client?.actionEnded(graph, action);
+    }
+
+    behaviorActivated(graph: Graph, behavior: Behavior): void {
+        this.client?.behaviorActivated(graph, behavior);
+    }
+
+    behaviorStarted(graph: Graph, behavior: Behavior): void {
+        this.client?.behaviorStarted(graph, behavior);
+    }
+
+    behaviorEnded(graph: Graph, behavior: Behavior): void {
+        this.client?.behaviorEnded(graph, behavior);
+    }
+
+    resourceUpdated(graph: Graph, resource: Resource): void {
+        this.client?.resourceUpdated(graph, resource);
+    }
+
+    extentAdded(graph: Graph, extent: Extent): void {
+        this.client?.extentAdded(graph, extent);
+    }
+    extentRemoved(graph: Graph, extent: Extent) {
+        this.client?.extentRemoved(graph, extent);
+    }
+
+    graphUpdatesStarted(graph: Graph): void {
+        this.client?.graphUpdatesStarted(graph);
+    }
+
+    graphUpdatesEnded(graph: Graph): void {
+        this.client?.graphUpdatesEnded(graph);
+    }
+
+    sideEffectQueued(graph: Graph, sideEffect: SideEffect): void {
+        this.client?.sideEffectQueued(graph, sideEffect);
+    }
+    sideEffectStarted(graph: Graph): void {
+        this.client?.sideEffectStarted(graph);
+    }
+
+    sideEffectEnded(graph: Graph, sideEffect: SideEffect): void {
+        this.client?.sideEffectEnded(graph, sideEffect);
+    }
+
+
 }
 
 export class Graph {
@@ -97,6 +183,7 @@ export class Graph {
     _graphId: number = newGraphId();
     _extentIdCounter: number = 1;
     dbg_stepMode: boolean = false;
+    dbg_logMode: boolean = false;
     private stepFlag: boolean = false;
     private debugHook: _BG_DebugHook;
 
@@ -145,6 +232,9 @@ export class Graph {
             throw err;
         }
         this.actions.push(action);
+        if (this.dbg_logMode) {
+            this.debugHook.actionQueued(this, action);
+        }
         // if we are in step mode and in the middle of an event loop then creating an action conceptually has to be an async action
         // because we can't force it to finish
         if (!this.dbg_stepMode || (this.dbg_stepMode && this.currentEvent == null)) {
@@ -165,6 +255,9 @@ export class Graph {
                 }
                 action.resolve = resolve;
                 this.actions.push(action);
+                if (this.dbg_logMode) {
+                    this.debugHook.actionQueued(this, action);
+                }
                 if (this.currentEvent == null) {
                     this.eventLoop();
                 }
@@ -195,6 +288,9 @@ export class Graph {
                         this.eventLoopState = new EventLoopState(action);
                         this.eventLoopState.phase = _EventLoopPhase.action;
                         this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
+                        if (this.dbg_logMode) {
+                            this.debugHook.eventStarted(this);
+                        }
                         continue;
                     } else {
                         break; // exit event loop
@@ -202,8 +298,14 @@ export class Graph {
                 } else {
                     if (this.eventLoopState.phase === _EventLoopPhase.action) {
                         if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                            if (this.dbg_logMode) {
+                                this.debugHook.actionStarted(this);
+                            }
                             this.eventLoopState.action.block(this.eventLoopState.action.extent);
                             this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                            if (this.dbg_logMode) {
+                                this.debugHook.actionEnded(this, this.eventLoopState.action);
+                            }
                         } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
                             this.eventLoopState.phase = _EventLoopPhase.updates;
                             this.stepFlag = true; // next step should run through to next phase
@@ -212,8 +314,14 @@ export class Graph {
                     } else if (this.eventLoopState.phase === _EventLoopPhase.updates) {
                         if (this.currentBehavior !== null) {
                             if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                                if (this.dbg_logMode) {
+                                    this.debugHook.behaviorStarted(this, this.currentBehavior);
+                                }
                                 this.currentBehavior.block(this.currentBehavior.extent);
                                 this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                                if (this.dbg_logMode) {
+                                    this.debugHook.behaviorEnded(this, this.currentBehavior);
+                                }
                             } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
                                 this.currentBehavior = null;
                                 this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
@@ -223,11 +331,17 @@ export class Graph {
                         } else if (this.eventLoopState.runningGraphUpdates) {
                             if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
                                 let sequence = this.currentEvent!.sequence;
+                                if (this.dbg_logMode) {
+                                    this.debugHook.graphUpdatesStarted(this);
+                                }
                                 this.addUntrackedBehaviors();
                                 this.addUntrackedSupplies();
                                 this.addUntrackedDemands(sequence);
                                 this.orderBehaviors();
                                 this.eventLoopState.runnablePhase = _RunnablePhase.ran;
+                                if (this.dbg_logMode) {
+                                    this.debugHook.graphUpdatesEnded(this);
+                                }
                                 continue;
                             } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
                                 this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
@@ -294,8 +408,14 @@ export class Graph {
                             continue;
                         } else {
                             if (this.eventLoopState.runnablePhase === _RunnablePhase.notStarted) {
+                                if (this.dbg_logMode) {
+                                    this.debugHook.sideEffectStarted(this);
+                                }
                                 this.eventLoopState.runnablePhase = _RunnablePhase.ran;
                                 this.eventLoopState.currentSideEffect.block(this.eventLoopState.currentSideEffect.extent);
+                                if (this.dbg_logMode) {
+                                    this.debugHook.sideEffectEnded(this, this.eventLoopState.currentSideEffect);
+                                }
                             } else if (this.eventLoopState.runnablePhase === _RunnablePhase.ran) {
                                 this.eventLoopState.currentSideEffect = null;
                                 this.eventLoopState.runnablePhase = _RunnablePhase.notStarted;
@@ -312,6 +432,9 @@ export class Graph {
                         this.currentEvent = null;
                         this.eventLoopState = null;
                         this.currentBehavior = null;
+                        if (this.dbg_logMode) {
+                            this.debugHook.eventEnded(this, this.lastEvent!);
+                        }
                     }
                 }
             } catch (error) {
@@ -406,6 +529,9 @@ export class Graph {
 
     resourceTouched(resource: Resource) {
         if (this.currentEvent != null) {
+            if (this.dbg_logMode) {
+                this.debugHook.resourceUpdated(this, resource);
+            }
             if (this.eventLoopState != null && this.eventLoopState.phase == _EventLoopPhase.action) {
                 this.eventLoopState.actionUpdates.push(resource);
             }
@@ -422,6 +548,9 @@ export class Graph {
         if (behavior.enqueuedWhen == null || behavior.enqueuedWhen < sequence) {
             behavior.enqueuedWhen = sequence;
             this.activatedBehaviors.push(behavior);
+            if (this.dbg_logMode) {
+                this.debugHook.behaviorActivated(this, behavior);
+            }
         }
     }
 
@@ -501,6 +630,9 @@ export class Graph {
             throw err;
         } else {
             this.effects.push(sideEffect);
+            if (this.dbg_logMode) {
+                this.debugHook.sideEffectQueued(this, sideEffect);
+            }
         }
     }
 
@@ -885,6 +1017,9 @@ export class Graph {
 
         extent.addedToGraphWhen = this.currentEvent.sequence;
         this.extentsAdded.push(extent);
+        if (this.dbg_logMode) {
+            this.debugHook.extentAdded(this, extent);
+        }
         // this casting below is a hack to get at the private method so we can skip integrity checks which
         // allow us to update addedToGraph from inside whatever behavior or action it is added
         (extent.addedToGraph as unknown as StateInternal<boolean>)._updateForce(true);
@@ -904,6 +1039,9 @@ export class Graph {
                 this.removeBehavior(behavior, this.currentEvent.sequence);
             }
             extent.addedToGraphWhen = null;
+            if (this.dbg_logMode) {
+                this.debugHook.extentRemoved(this, extent);
+            }
         }
     }
 }
